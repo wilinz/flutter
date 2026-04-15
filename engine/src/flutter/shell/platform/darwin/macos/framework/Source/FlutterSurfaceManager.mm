@@ -61,6 +61,11 @@ static NSColor* GetBorderColorForLayer(int layer) {
 
 /// Creates sublayers for given layer, each one displaying a portion of the
 /// of the surface determined by a rectangle in the provided paint region.
+static void SetExtendedRange(CALayer* layer, BOOL extended) {
+  layer.wantsExtendedDynamicRangeContent = extended;
+  layer.contentsFormat = extended ? kCAContentsFormatRGBA16Float : kCAContentsFormatRGBA8Uint;
+}
+
 static void UpdateContentSubLayers(CALayer* layer,
                                    IOSurfaceRef surface,
                                    CGFloat scale,
@@ -214,6 +219,11 @@ static void UpdateContentSubLayers(CALayer* layer,
                              info.paintRegion);
     }
     layer.zPosition = info.zIndex;
+    // Half-float (wide-gamut) surfaces carry EDR values above 1.0.
+    SetExtendedRange(layer, info.surface.isWideGamut);
+    for (CALayer* subLayer in layer.sublayers) {
+      SetExtendedRange(subLayer, info.surface.isWideGamut);
+    }
   }
 
   if (enableSurfaceDebugInfo) {

@@ -22,6 +22,20 @@ enum class CompressionType {
   kLossy,
 };
 
+//------------------------------------------------------------------------------
+/// @brief      The color space primaries of a texture's content. Used to
+///             apply gamut conversion when drawing a texture onto a render
+///             target with a different color space (e.g., Display P3 content
+///             drawn into an sRGB surface).
+///
+enum class ColorSpace {
+  kSRGB,             // Gamma-encoded sRGB / Rec. 709 primaries (default).
+  kDisplayP3,        // Gamma-encoded Display P3 (sRGB transfer + P3 primaries).
+  kLinearDisplayP3,  // Linear Display P3 targeting sRGB surface (gamut +
+                     // gamma).
+  kLinearP3Native,   // Linear Display P3 targeting P3 surface (gamma only).
+};
+
 constexpr const char* CompressionTypeToString(CompressionType type) {
   switch (type) {
     case CompressionType::kLossless:
@@ -48,6 +62,7 @@ struct TextureDescriptor {
   /// The number of layers in a `kTexture2DArray`. Ignored by other texture
   /// types (a cube map implies 6 layers from its type).
   uint16_t array_layer_count = 1u;
+  ColorSpace color_space = ColorSpace::kSRGB;
 
   /// @brief The number of bytes required to store an image of the given texel
   ///        dimensions in this format. Block-compressed formats round the
