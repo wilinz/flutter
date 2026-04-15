@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #import <Cocoa/Cocoa.h>
+#import <IOSurface/IOSurface.h>
 #import <Metal/Metal.h>
 
 #import "flutter/shell/platform/darwin/macos/framework/Source/FlutterSurface.h"
@@ -74,6 +75,40 @@ TEST(FlutterSurfaceManager, MetalTextureSizeMatchesSurfaceSize) {
   id<MTLTexture> metalTexture = (__bridge id)texture.texture;
   EXPECT_EQ(metalTexture.width, 100ul);
   EXPECT_EQ(metalTexture.height, 50ul);
+  texture.destruction_callback(texture.user_data);
+}
+
+TEST(FlutterSurfaceManager, MetalTextureUsesRGBA16FloatPixelFormat) {
+  TestView* testView = [[TestView alloc] init];
+  FlutterSurfaceManager* surfaceManager = CreateSurfaceManager(testView, /*enableWideGamut=*/YES);
+
+  auto surface = [surfaceManager surfaceForSize:CGSizeMake(100, 50)];
+  auto texture = surface.asFlutterMetalTexture;
+  id<MTLTexture> metalTexture = (__bridge id)texture.texture;
+  // F16 compositing surface: allows HDR values >1.0 to render directly.
+  EXPECT_EQ(metalTexture.pixelFormat, MTLPixelFormatRGBA16Float);
+  texture.destruction_callback(texture.user_data);
+}
+
+TEST(FlutterSurfaceManager, IOSurfaceUsesExtendedSRGBColorSpace) {
+  TestView* testView = [[TestView alloc] init];
+  FlutterSurfaceManager* surfaceManager = CreateSurfaceManager(testView);
+
+  auto surface = [surfaceManager surfaceForSize:CGSizeMake(100, 50)];
+
+  // Verify the IOSurface is tagged with extended sRGB. This uses the sRGB
+  // transfer function (gamma) with values >1.0 allowed for HDR/EDR content.
+  // Using sRGB gamma (not linear) keeps alpha blending visually identical
+  // to the previous BGRA8 path.
+  IOSurfaceRef ioSurface = surface.ioSurface;
+  ASSERT_TRUE(ioSurface != nullptr);
+
+  CFTypeRef colorSpaceValue = IOSurfaceCopyValue(ioSurface, CFSTR("IOSurfaceColorSpace"));
+  ASSERT_TRUE(colorSpaceValue != nullptr);
+  EXPECT_TRUE(CFEqual(colorSpaceValue, kCGColorSpaceExtendedSRGB));
+  CFRelease(colorSpaceValue);
+
+  auto texture = surface.asFlutterMetalTexture;
   texture.destruction_callback(texture.user_data);
 }
 
@@ -306,7 +341,7 @@ TEST(FlutterSurfaceManager, WideGamutSurfaceHasCorrectPixelFormat) {
   auto surface = [surfaceManager surfaceForSize:CGSizeMake(100, 50)];
   auto texture = surface.asFlutterMetalTexture;
   id<MTLTexture> metalTexture = (__bridge id)texture.texture;
-  EXPECT_EQ(metalTexture.pixelFormat, MTLPixelFormatBGRA10_XR);
+  EXPECT_EQ(metalTexture.pixelFormat, MTLPixelFormatRGBA16Float);
   texture.destruction_callback(texture.user_data);
 }
 
@@ -371,7 +406,7 @@ TEST(FlutterSurfaceManager, WideGamutIOSurfaceHasCorrectPixelFormat) {
   auto surface = [surfaceManager surfaceForSize:CGSizeMake(100, 50)];
   IOSurfaceRef ioSurface = surface.ioSurface;
   uint32_t pixelFormat = (uint32_t)IOSurfaceGetPixelFormat(ioSurface);
-  EXPECT_EQ(pixelFormat, (uint32_t)kCVPixelFormatType_40ARGBLEWideGamut);
+  EXPECT_EQ(pixelFormat, (uint32_t)kCVPixelFormatType_64RGBAHalf);
 }
 
 TEST(FlutterSurfaceManager, StandardGamutIOSurfaceHasCorrectPixelFormat) {
@@ -412,7 +447,7 @@ TEST(FlutterSurfaceManager, SurfaceCacheDoesNotMixGamutModes) {
   auto wideSurface = [wideManager surfaceForSize:CGSizeMake(100, 100)];
   auto wideTexture = wideSurface.asFlutterMetalTexture;
   id<MTLTexture> wideMetalTexture = (__bridge id)wideTexture.texture;
-  EXPECT_EQ(wideMetalTexture.pixelFormat, MTLPixelFormatBGRA10_XR);
+  EXPECT_EQ(wideMetalTexture.pixelFormat, MTLPixelFormatRGBA16Float);
 
   // Present and get it cached.
   [wideManager presentSurfaces:@[ CreatePresentInfo(wideSurface) ] atTime:0 notify:nil];
@@ -422,7 +457,7 @@ TEST(FlutterSurfaceManager, SurfaceCacheDoesNotMixGamutModes) {
   auto recycledSurface = [wideManager surfaceForSize:CGSizeMake(100, 100)];
   auto recycledTexture = recycledSurface.asFlutterMetalTexture;
   id<MTLTexture> recycledMetalTexture = (__bridge id)recycledTexture.texture;
-  EXPECT_EQ(recycledMetalTexture.pixelFormat, MTLPixelFormatBGRA10_XR);
+  EXPECT_EQ(recycledMetalTexture.pixelFormat, MTLPixelFormatRGBA16Float);
   recycledTexture.destruction_callback(recycledTexture.user_data);
 }
 
@@ -448,7 +483,7 @@ TEST(FlutterSurfaceManager, DynamicSwitchFromStandardToWideGamut) {
   auto surface2 = [surfaceManager surfaceForSize:CGSizeMake(100, 50)];
   auto texture2 = surface2.asFlutterMetalTexture;
   id<MTLTexture> metalTexture2 = (__bridge id)texture2.texture;
-  EXPECT_EQ(metalTexture2.pixelFormat, MTLPixelFormatBGRA10_XR);
+  EXPECT_EQ(metalTexture2.pixelFormat, MTLPixelFormatRGBA16Float);
   texture2.destruction_callback(texture2.user_data);
 }
 
@@ -460,7 +495,7 @@ TEST(FlutterSurfaceManager, DynamicSwitchFromWideToStandardGamut) {
   auto surface1 = [surfaceManager surfaceForSize:CGSizeMake(100, 50)];
   auto texture1 = surface1.asFlutterMetalTexture;
   id<MTLTexture> metalTexture1 = (__bridge id)texture1.texture;
-  EXPECT_EQ(metalTexture1.pixelFormat, MTLPixelFormatBGRA10_XR);
+  EXPECT_EQ(metalTexture1.pixelFormat, MTLPixelFormatRGBA16Float);
   [surfaceManager presentSurfaces:@[ CreatePresentInfo(surface1) ] atTime:0 notify:nil];
   texture1.destruction_callback(texture1.user_data);
 
@@ -493,6 +528,34 @@ TEST(FlutterSurfaceManager, DynamicSwitchNoOpWhenSameValue) {
   // Set same value — cache should not be flushed.
   [surfaceManager setEnableWideGamut:YES];
   EXPECT_EQ(surfaceManager.backBufferCache.count, 1ul);
+}
+
+// Verify that backing store layers have F16 EDR properties when created.
+TEST(FlutterSurfaceManager, BackingStoreLayersHaveF16EDRProperties) {
+  TestView* testView = [[TestView alloc] init];
+  FlutterSurfaceManager* surfaceManager = CreateSurfaceManager(testView, /*enableWideGamut=*/YES);
+
+  auto surface = [surfaceManager surfaceForSize:CGSizeMake(100, 50)];
+  [surfaceManager presentSurfaces:@[ CreatePresentInfo(surface) ] atTime:0 notify:nil];
+
+  ASSERT_EQ(testView.layer.sublayers.count, 1ul);
+  CALayer* backingStoreLayer = testView.layer.sublayers[0];
+  EXPECT_TRUE(backingStoreLayer.wantsExtendedDynamicRangeContent);
+  EXPECT_TRUE([backingStoreLayer.contentsFormat isEqualToString:kCAContentsFormatRGBA16Float]);
+}
+
+// Verify that 8-bit surfaces keep standard dynamic range layers.
+TEST(FlutterSurfaceManager, BackingStoreLayersStaySDRWithoutWideGamut) {
+  TestView* testView = [[TestView alloc] init];
+  FlutterSurfaceManager* surfaceManager = CreateSurfaceManager(testView);
+
+  auto surface = [surfaceManager surfaceForSize:CGSizeMake(100, 50)];
+  [surfaceManager presentSurfaces:@[ CreatePresentInfo(surface) ] atTime:0 notify:nil];
+
+  ASSERT_EQ(testView.layer.sublayers.count, 1ul);
+  CALayer* backingStoreLayer = testView.layer.sublayers[0];
+  EXPECT_FALSE(backingStoreLayer.wantsExtendedDynamicRangeContent);
+  EXPECT_TRUE([backingStoreLayer.contentsFormat isEqualToString:kCAContentsFormatRGBA8Uint]);
 }
 
 }  // namespace flutter::testing

@@ -58,8 +58,10 @@
     self->_isWideGamut = enableWideGamut;
     self->_ioSurface.Reset([FlutterSurface createIOSurfaceWithSize:size
                                                    enableWideGamut:enableWideGamut]);
+    // The wide-gamut surface is half-float so EDR values above 1.0 survive
+    // composition.
     MTLPixelFormat pixelFormat =
-        enableWideGamut ? MTLPixelFormatBGRA10_XR : MTLPixelFormatBGRA8Unorm;
+        enableWideGamut ? MTLPixelFormatRGBA16Float : MTLPixelFormatBGRA8Unorm;
     self->_texture = [FlutterSurface createTextureForIOSurface:_ioSurface
                                                           size:size
                                                         device:device
@@ -93,8 +95,11 @@
   unsigned pixelFormat;
   unsigned bytesPerElement;
   if (enableWideGamut) {
-    // 10-bit wide gamut format (same as iOS)
-    pixelFormat = kCVPixelFormatType_40ARGBLEWideGamut;
+    // F16 compositing surface so HDR values above 1.0 reach Core Animation.
+    // Paired with kCGColorSpaceExtendedSRGB (gamma-encoded, not linear) so
+    // alpha blending matches the 8-bit surface; linear blending dims
+    // semi-transparent UI at midtones.
+    pixelFormat = kCVPixelFormatType_64RGBAHalf;
     bytesPerElement = 8;
   } else {
     pixelFormat = kCVPixelFormatType_32BGRA;
@@ -114,6 +119,7 @@
 
   IOSurfaceRef res = IOSurfaceCreate((CFDictionaryRef)options);
   if (enableWideGamut) {
+    // Extended sRGB: sRGB transfer with values above 1.0 shown as EDR.
     IOSurfaceSetValue(res, kIOSurfaceColorSpace, kCGColorSpaceExtendedSRGB);
   } else {
     IOSurfaceSetValue(res, kIOSurfaceColorSpace, kCGColorSpaceSRGB);
@@ -132,7 +138,6 @@
                                                      mipmapped:NO];
   textureDescriptor.usage =
       MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget | MTLTextureUsageShaderWrite;
-  // plane = 0 for BGRA.
   return [device newTextureWithDescriptor:textureDescriptor iosurface:surface plane:0];
 }
 

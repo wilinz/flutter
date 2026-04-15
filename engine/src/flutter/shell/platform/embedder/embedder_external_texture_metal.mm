@@ -42,16 +42,18 @@ void EmbedderExternalTextureMetal::Paint(PaintContext& context,
                                  SkISize::Make(bounds.GetWidth(), bounds.GetHeight()));
   }
 
+  if (!last_image_) {
+    return;
+  }
+
   DlCanvas* canvas = context.canvas;
   const DlPaint* paint = context.paint;
 
-  if (last_image_) {
-    DlRect image_bounds = DlRect::Make(last_image_->GetBounds());
-    if (bounds != image_bounds) {
-      canvas->DrawImageRect(last_image_, image_bounds, bounds, sampling, paint);
-    } else {
-      canvas->DrawImage(last_image_, DlPoint(bounds.GetX(), bounds.GetY()), sampling, paint);
-    }
+  DlRect image_bounds = DlRect::Make(last_image_->GetBounds());
+  if (bounds != image_bounds) {
+    canvas->DrawImageRect(last_image_, image_bounds, bounds, sampling, paint);
+  } else {
+    canvas->DrawImage(last_image_, DlPoint(bounds.GetX(), bounds.GetY()), sampling, paint);
   }
 }
 
@@ -65,11 +67,17 @@ sk_sp<DlImage> EmbedderExternalTextureMetal::ResolveTexture(int64_t texture_id,
   if (!texture) {
     return nullptr;
   }
+
   if (aiks_context) {
     switch (texture->pixel_format) {
       case FlutterMetalExternalTexturePixelFormat::kRGBA: {
         if (ValidNumTextures(1, texture->num_textures)) {
           id<MTLTexture> rgbaTex = (__bridge id<MTLTexture>)texture->textures[0];
+          if (rgbaTex.pixelFormat == MTLPixelFormatRGBA16Float) {
+            return [FlutterDarwinExternalTextureImpellerImageWrapper
+                wrapRGBA16FloatTexture:rgbaTex
+                           aiksContext:aiks_context];
+          }
           return [FlutterDarwinExternalTextureImpellerImageWrapper wrapRGBATexture:rgbaTex
                                                                        aiksContext:aiks_context];
         }
@@ -101,10 +109,18 @@ sk_sp<DlImage> EmbedderExternalTextureMetal::ResolveTexture(int64_t texture_id,
     case FlutterMetalExternalTexturePixelFormat::kRGBA: {
       if (ValidNumTextures(1, texture->num_textures)) {
         id<MTLTexture> rgbaTex = (__bridge id<MTLTexture>)texture->textures[0];
-        image = [FlutterDarwinExternalTextureSkImageWrapper wrapRGBATexture:rgbaTex
-                                                                  grContext:context
-                                                                      width:rgbaTex.width
-                                                                     height:rgbaTex.height];
+        if (rgbaTex.pixelFormat == MTLPixelFormatRGBA16Float) {
+          image =
+              [FlutterDarwinExternalTextureSkImageWrapper wrapRGBA16FloatTexture:rgbaTex
+                                                                       grContext:context
+                                                                           width:rgbaTex.width
+                                                                          height:rgbaTex.height];
+        } else {
+          image = [FlutterDarwinExternalTextureSkImageWrapper wrapRGBATexture:rgbaTex
+                                                                    grContext:context
+                                                                        width:rgbaTex.width
+                                                                       height:rgbaTex.height];
+        }
       }
       break;
     }
