@@ -26,6 +26,14 @@
 #include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
 #include "third_party/skia/include/gpu/ganesh/gl/GrGLTypes.h"
 
+// GL_RGBA16F_EXT is defined in GLES2/gl2ext.h (0x881A). Reported by the
+// embedder's external texture callback for FP16 textures; used here to pick
+// kRGBA_F16_SkColorType so Skia doesn't reject the HDR texture with a
+// color-type mismatch.
+#ifndef GL_RGBA16F_EXT
+#define GL_RGBA16F_EXT 0x881A
+#endif
+
 namespace flutter {
 
 EmbedderExternalTextureGL::EmbedderExternalTextureGL(
@@ -107,11 +115,14 @@ sk_sp<DlImage> EmbedderExternalTextureGL::ResolveTextureSkia(
   auto gr_backend_texture = GrBackendTextures::MakeGL(
       width, height, skgpu::Mipmapped::kNo, gr_texture_info);
   SkImages::TextureReleaseProc release_proc = texture->destruction_callback;
+  const SkColorType color_type = (texture->format == GL_RGBA16F_EXT)
+                                     ? kRGBA_F16_SkColorType
+                                     : kRGBA_8888_SkColorType;
   auto image =
       SkImages::BorrowTextureFrom(context,                   // context
                                   gr_backend_texture,        // texture handle
                                   kTopLeft_GrSurfaceOrigin,  // origin
-                                  kRGBA_8888_SkColorType,    // color type
+                                  color_type,                // color type
                                   kPremul_SkAlphaType,       // alpha type
                                   nullptr,                   // colorspace
                                   release_proc,       // texture release proc
