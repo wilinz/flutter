@@ -42,8 +42,14 @@ class CompositorOpenGL : public Compositor {
   struct TextureFormat {
     // The format passed to the engine using `FlutterOpenGLFramebuffer.target`.
     uint32_t sized_format = 0;
-    // The format used to create textures. Passed to `glTexImage2D`.
+    // The internal format passed to `glTexImage2D`: the sized 8-bit format,
+    // or `GL_RGBA16F` (paired with `GL_HALF_FLOAT`) for F16.
+    uint32_t internal_format = 0;
+    // The external format (pixel layout) passed to `glTexImage2D`.
     uint32_t general_format = 0;
+    // The pixel data type passed to `glTexImage2D`. GL_UNSIGNED_BYTE for 8-bit,
+    // GL_HALF_FLOAT for RGBA16F HDR-capable backing stores.
+    uint32_t pixel_type = 0;
   };
 
   // The compositor initializes itself lazily once |CreateBackingStore| is
