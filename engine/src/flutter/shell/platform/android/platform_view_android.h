@@ -204,6 +204,9 @@ class PlatformViewAndroid final : public PlatformView {
 
   void FireFirstFrameCallback();
 
+  // Tells Java whether the onscreen surface, once created, is extended-range.
+  void ReportSurfaceDynamicRange();
+
   double GetScaledFontSize(double unscaled_font_size,
                            int configuration_id) const override;
 

@@ -48,6 +48,10 @@ class MockPlatformViewAndroidJNI : public PlatformViewAndroidJNI {
                std::vector<std::string> strings),
               (override));
   MOCK_METHOD(void, FlutterViewOnFirstFrame, (), (override));
+  MOCK_METHOD(void,
+              FlutterViewOnSurfaceDynamicRangeChanged,
+              (bool extended_range),
+              (override));
   MOCK_METHOD(void, FlutterViewOnPreEngineRestart, (), (override));
   MOCK_METHOD(void,
               SurfaceTextureAttachToGLContext,
@@ -76,6 +80,13 @@ class MockPlatformViewAndroidJNI : public PlatformViewAndroidJNI {
   MOCK_METHOD(AcquiredHardwareBuffer,
               ImageProducerTextureEntryAcquireLatestHardwareBuffer,
               (JavaLocalRef image_texture_entry),
+              (override));
+
+  MOCK_METHOD(void,
+              ImageProducerTextureEntryOnHardwareBufferReleased,
+              (JavaLocalRef image_texture_entry,
+               AHardwareBuffer* buffer,
+               int release_fence_fd),
               (override));
   MOCK_METHOD(JavaLocalRef,
               ImageGetHardwareBuffer,
