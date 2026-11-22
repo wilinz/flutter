@@ -311,7 +311,7 @@ FLUTTER_ASSERT_ARC
   }
 
   // This image should not escape local use by this flutter::Texture implementation
-  return flutter::DlImage::Make(skImage);
+  return flutter::DlImageSkia::Make(skImage);
 }
 
 @end
@@ -446,7 +446,6 @@ FLUTTER_ASSERT_ARC
   // Apply P3→sRGB gamut matrix + sRGB gamma encoding.
   desc.color_space = impeller::ColorSpace::kLinearDisplayP3;
   auto texture = impeller::TextureMTL::Wrapper(desc, rgbaTex);
-  texture->SetCoordinateSystem(impeller::TextureCoordinateSystem::kUploadFromHost);
   return impeller::DlImageImpeller::Make(texture);
 }
 @end
