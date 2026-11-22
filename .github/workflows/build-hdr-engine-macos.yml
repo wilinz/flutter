@@ -12,6 +12,10 @@ on:
         description: 'Runtime modes (JSON list)'
         required: true
         default: '["debug","profile","release"]'
+      cpus:
+        description: 'CPUs (JSON list)'
+        required: true
+        default: '["arm64","x64"]'
 
 permissions:
   contents: read
@@ -22,11 +26,16 @@ jobs:
       fail-fast: false
       matrix:
         mode: ${{ fromJSON(inputs.modes) }}
-        cpu: [arm64, x64]
+        cpu: ${{ fromJSON(inputs.cpus) }}
     runs-on: macos-15
     timeout-minutes: 340
     env:
       OUT: ci/mac_${{ matrix.mode }}_framework_${{ matrix.cpu }}
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 1500M
+      CCACHE_COMPRESS: 'true'
+      CCACHE_SLOPPINESS: include_file_mtime,include_file_ctime,time_macros,pch_defines,modules,clang_index_store,system_headers
     steps:
       - name: Select Xcode and free disk space
         run: |
@@ -50,10 +59,19 @@ jobs:
           path: flutter
           fetch-depth: 1
 
-      - name: Install depot_tools
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.mode }}-${{ matrix.cpu }}-${{ github.sha }}
+          restore-keys: ccache-${{ matrix.mode }}-${{ matrix.cpu }}-
+
+      - name: Install depot_tools and ccache
         run: |
           git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$RUNNER_TEMP/depot_tools"
           echo "$RUNNER_TEMP/depot_tools" >> "$GITHUB_PATH"
+          brew install ccache
+          ccache -z
 
       - name: gclient sync
         working-directory: flutter
@@ -80,9 +98,17 @@ jobs:
         working-directory: flutter/engine/src
         run: |
           ./flutter/tools/gn --target-dir "$OUT" --mac --mac-cpu ${{ matrix.cpu }} \
-            --runtime-mode ${{ matrix.mode }} --no-lto --prebuilt-dart-sdk --no-rbe --no-goma
+            --runtime-mode ${{ matrix.mode }} --no-lto --prebuilt-dart-sdk --no-rbe --no-goma --ccache
           ninja -C "out/$OUT" flutter/shell/platform/darwin/macos:zip_macos_flutter_framework
+          ccache -s
           df -h /
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.mode }}-${{ matrix.cpu }}-${{ github.sha }}-${{ github.run_attempt }}
 
       - name: Package
         working-directory: flutter/engine/src/out
@@ -106,6 +132,7 @@ jobs:
       - name: Merge arm64 and x64 slices
         run: |
           set -e
+          case '${{ inputs.cpus }}' in *arm64*x64*|*x64*arm64*) ;; *) echo "universal merge needs arm64 and x64"; exit 0;; esac
           for mode in $(echo '${{ inputs.modes }}' | tr -d '[]" ' | tr ',' ' '); do
             mkdir -p "work/$mode/arm64" "work/$mode/x64" "dist"
             tar xzf "parts/FlutterMacOS-$mode-arm64/FlutterMacOS-$mode-arm64.tgz" -C "work/$mode/arm64"
