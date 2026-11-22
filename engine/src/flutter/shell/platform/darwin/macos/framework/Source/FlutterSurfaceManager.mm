@@ -71,7 +71,8 @@ static void UpdateContentSubLayers(CALayer* layer,
                                    CGFloat scale,
                                    CGSize surfaceSize,
                                    NSColor* borderColor,
-                                   const std::vector<FlutterRect>& paintRegion) {
+                                   const std::vector<FlutterRect>& paintRegion,
+                                   BOOL extendedRange) {
   // Adjust sublayer count to paintRegion count.
   while (layer.sublayers.count > paintRegion.size()) {
     [layer.sublayers.lastObject removeFromSuperlayer];
@@ -79,6 +80,7 @@ static void UpdateContentSubLayers(CALayer* layer,
 
   while (layer.sublayers.count < paintRegion.size()) {
     CALayer* newLayer = [CALayer layer];
+    SetExtendedRange(newLayer, extendedRange);
     [layer addSublayer:newLayer];
   }
 
@@ -101,6 +103,7 @@ static void UpdateContentSubLayers(CALayer* layer,
       subLayer.borderWidth = 1.0;
     }
 
+    SetExtendedRange(subLayer, extendedRange);
     subLayer.contents = (__bridge id)surface;
   }
 }
@@ -197,6 +200,9 @@ static void UpdateContentSubLayers(CALayer* layer,
   }
   while (_layers.count < _frontSurfaces.count) {
     CALayer* layer = [CALayer layer];
+    // Core Animation only honours EDR on contents committed after the flag is
+    // set, so configure the layer before it receives any surface.
+    SetExtendedRange(layer, _wideGamut);
     [_containingLayer addSublayer:layer];
     [_layers addObject:layer];
   }
@@ -208,6 +214,9 @@ static void UpdateContentSubLayers(CALayer* layer,
     FlutterSurfacePresentInfo* info = surfaces[i];
     CALayer* layer = _layers[i];
     CGFloat scale = _containingLayer.contentsScale;
+    // Half-float (wide-gamut) surfaces carry EDR values above 1.0; set the
+    // flags before assigning contents.
+    SetExtendedRange(layer, info.surface.isWideGamut);
     if (i == 0) {
       layer.frame = CGRectMake(info.offset.x / scale, info.offset.y / scale,
                                info.surface.size.width / scale, info.surface.size.height / scale);
@@ -216,14 +225,10 @@ static void UpdateContentSubLayers(CALayer* layer,
       layer.frame = CGRectZero;
       NSColor* borderColor = enableSurfaceDebugInfo ? GetBorderColorForLayer(i - 1) : nil;
       UpdateContentSubLayers(layer, info.surface.ioSurface, scale, info.surface.size, borderColor,
-                             info.paintRegion);
+                             info.paintRegion,
+                             info.surface.isWideGamut);
     }
     layer.zPosition = info.zIndex;
-    // Half-float (wide-gamut) surfaces carry EDR values above 1.0.
-    SetExtendedRange(layer, info.surface.isWideGamut);
-    for (CALayer* subLayer in layer.sublayers) {
-      SetExtendedRange(subLayer, info.surface.isWideGamut);
-    }
   }
 
   if (enableSurfaceDebugInfo) {
