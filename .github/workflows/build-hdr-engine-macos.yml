@@ -1,0 +1,127 @@
+name: Build HDR engine (macOS)
+
+# Builds FlutterMacOS.framework from this branch on GitHub-hosted runners and
+# uploads universal (arm64 + x64) frameworks per runtime mode as artifacts.
+# The frameworks replace the matching slices of a stock Flutter SDK whose
+# engine.version equals this branch's upstream base.
+
+on:
+  workflow_dispatch:
+    inputs:
+      modes:
+        description: 'Runtime modes (JSON list)'
+        required: true
+        default: '["debug","profile","release"]'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: ${{ fromJSON(inputs.modes) }}
+        cpu: [arm64, x64]
+    runs-on: macos-15
+    timeout-minutes: 340
+    env:
+      OUT: ci/mac_${{ matrix.mode }}_framework_${{ matrix.cpu }}
+    steps:
+      - name: Select Xcode and free disk space
+        run: |
+          set -x
+          df -h /
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$XC" ]; then sudo xcode-select -s "$XC"; fi
+          xcodebuild -version
+          KEEP=$(cd "$(xcode-select -p)/../.." && pwd -P)
+          for x in /Applications/Xcode*.app; do
+            [ "$(cd "$x" && pwd -P)" = "$KEEP" ] || sudo rm -rf "$x"
+          done
+          sudo rm -rf "$HOME/Library/Android" /usr/local/share/dotnet "$HOME/.dotnet" \
+            "$RUNNER_TOOL_CACHE"/* /usr/local/lib/node_modules || true
+          xcrun simctl runtime delete all 2>/dev/null || true
+          df -h /
+
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          path: flutter
+          fetch-depth: 1
+
+      - name: Install depot_tools
+        run: |
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$RUNNER_TEMP/depot_tools"
+          echo "$RUNNER_TEMP/depot_tools" >> "$GITHUB_PATH"
+
+      - name: gclient sync
+        working-directory: flutter
+        run: |
+          cat > .gclient <<EOF
+          solutions = [
+            {
+              "managed": False,
+              "name": ".",
+              "url": "https://github.com/${GITHUB_REPOSITORY}.git",
+              "deps_file": "DEPS",
+              "custom_vars": {
+                "download_android_deps": False,
+                "download_jdk": False,
+                "download_fuchsia_deps": False,
+              },
+            },
+          ]
+          EOF
+          gclient sync --no-history -D --shallow
+          df -h /
+
+      - name: Build FlutterMacOS.framework
+        working-directory: flutter/engine/src
+        run: |
+          ./flutter/tools/gn --target-dir "$OUT" --mac --mac-cpu ${{ matrix.cpu }} \
+            --runtime-mode ${{ matrix.mode }} --no-lto --prebuilt-dart-sdk --no-rbe --no-goma
+          ninja -C "out/$OUT" flutter/shell/platform/darwin/macos:zip_macos_flutter_framework
+          df -h /
+
+      - name: Package
+        working-directory: flutter/engine/src/out
+        run: |
+          tar czf "$RUNNER_TEMP/FlutterMacOS-${{ matrix.mode }}-${{ matrix.cpu }}.tgz" \
+            -C "$OUT" FlutterMacOS.framework
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FlutterMacOS-${{ matrix.mode }}-${{ matrix.cpu }}
+          path: ${{ runner.temp }}/FlutterMacOS-${{ matrix.mode }}-${{ matrix.cpu }}.tgz
+          retention-days: 30
+
+  universal:
+    needs: build
+    runs-on: macos-15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: parts
+      - name: Merge arm64 and x64 slices
+        run: |
+          set -e
+          for mode in $(echo '${{ inputs.modes }}' | tr -d '[]" ' | tr ',' ' '); do
+            mkdir -p "work/$mode/arm64" "work/$mode/x64" "dist"
+            tar xzf "parts/FlutterMacOS-$mode-arm64/FlutterMacOS-$mode-arm64.tgz" -C "work/$mode/arm64"
+            tar xzf "parts/FlutterMacOS-$mode-x64/FlutterMacOS-$mode-x64.tgz" -C "work/$mode/x64"
+            FW="work/$mode/arm64/FlutterMacOS.framework"
+            BIN="$FW/Versions/A/FlutterMacOS"
+            lipo -create "$BIN" "work/$mode/x64/FlutterMacOS.framework/Versions/A/FlutterMacOS" -output "$BIN.universal"
+            mv "$BIN.universal" "$BIN"
+            lipo -info "$BIN"
+            tar czf "dist/FlutterMacOS-$mode-universal.tgz" -C "work/$mode/arm64" FlutterMacOS.framework
+          done
+          git_sha="${GITHUB_SHA}"
+          echo "$git_sha" > dist/SOURCE_COMMIT
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FlutterMacOS-universal
+          path: dist
+          retention-days: 30
