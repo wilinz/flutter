@@ -32,8 +32,7 @@ void main() {
   f16vec4 sampled =
       texture(texture_sampler, texture_coords, float16_t(kDefaultMipBias));
   vec3 rgb = vec3(sampled.rgb);
-  rgb = vec3(dot(frag_info.color_row0, rgb),
-             dot(frag_info.color_row1, rgb),
+  rgb = vec3(dot(frag_info.color_row0, rgb), dot(frag_info.color_row1, rgb),
              dot(frag_info.color_row2, rgb));
   if (frag_info.gamma_encode > 0.5) {
     rgb = IPSrgbOETF(rgb);

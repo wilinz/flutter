@@ -1447,9 +1447,10 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
     [weakSelf handleMethodCall:call result:result];
   }];
 
-  _hdrChannel = [FlutterMethodChannel methodChannelWithName:@"flutter/hdr"
-                                           binaryMessenger:self.binaryMessenger
-                                                     codec:[FlutterStandardMethodCodec sharedInstance]];
+  _hdrChannel =
+      [FlutterMethodChannel methodChannelWithName:@"flutter/hdr"
+                                  binaryMessenger:self.binaryMessenger
+                                            codec:[FlutterStandardMethodCodec sharedInstance]];
   [_hdrChannel setMethodCallHandler:^(FlutterMethodCall* call, FlutterResult result) {
     [weakSelf handleHdrMethodCall:call result:result];
   }];
