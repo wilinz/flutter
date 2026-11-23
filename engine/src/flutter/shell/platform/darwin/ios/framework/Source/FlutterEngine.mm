@@ -127,6 +127,7 @@ NSString* const kFlutterApplicationRegistrarKey = @"io.flutter.flutter.applicati
 @property(nonatomic, strong) FlutterBasicMessageChannel* settingsChannel;
 @property(nonatomic, strong) FlutterBasicMessageChannel* keyEventChannel;
 @property(nonatomic, strong) FlutterMethodChannel* screenshotChannel;
+@property(nonatomic, strong) FlutterMethodChannel* hdrChannel;
 
 #pragma mark - Embedder API properties
 
@@ -734,6 +735,44 @@ NSString* const kFlutterApplicationRegistrarKey = @"io.flutter.flutter.applicati
     NSNumber* width = @(screenshot.frame_size.width);
     NSNumber* height = @(screenshot.frame_size.height);
     return result(@[ width, height, format ?: [NSNull null], data ]);
+  }];
+
+  // flutter/hdr: opts the view into extended dynamic range presentation and
+  // reports the screen's headroom.
+  self.hdrChannel =
+      [[FlutterMethodChannel alloc] initWithName:@"flutter/hdr"
+                                 binaryMessenger:self.binaryMessenger
+                                           codec:[FlutterStandardMethodCodec sharedInstance]];
+  [self.hdrChannel setMethodCallHandler:^(FlutterMethodCall* _Nonnull call,
+                                          FlutterResult _Nonnull result) {
+    FlutterEngine* strongSelf = weakSelf;
+    UIView* view = strongSelf.viewController.viewIfLoaded;
+    if (![view isKindOfClass:[FlutterView class]]) {
+      return result([FlutterError errorWithCode:@"no_view" message:@"No view." details:nil]);
+    }
+    FlutterView* flutterView = (FlutterView*)view;
+    NSDictionary* args = [call.arguments isKindOfClass:[NSDictionary class]] ? call.arguments : @{};
+    if ([call.method isEqualToString:@"setEnabled"]) {
+      flutterView.extendedDynamicRange = [args[@"enabled"] boolValue];
+    } else if (![call.method isEqualToString:@"getCapabilities"]) {
+      return result(FlutterMethodNotImplemented);
+    }
+    UIScreen* screen = flutterView.window.screen;
+    double current = 1.0;
+    double potential = 1.0;
+    if (@available(iOS 16.0, *)) {
+      if (screen) {
+        current = screen.currentEDRHeadroom;
+        potential = screen.potentialEDRHeadroom;
+      }
+    }
+    return result(@{
+      @"surface" : @(flutterView.pixelFormat == MTLPixelFormatRGBA16Float),
+      @"enabled" : @(flutterView.extendedDynamicRange),
+      @"currentHeadroom" : @(current),
+      @"potentialHeadroom" : @(potential),
+      @"referenceHeadroom" : @(0),
+    });
   }];
 }
 

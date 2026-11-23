@@ -21,6 +21,7 @@ FLUTTER_ASSERT_ARC
 
 @implementation FlutterView {
   BOOL _isWideGamutEnabled;
+  BOOL _extendedDynamicRange;
   CGSize _intrinsicSize;
 }
 
@@ -117,8 +118,33 @@ FLUTTER_ASSERT_ARC
     CAMetalLayer* layer = (CAMetalLayer*)self.layer;
     return layer.pixelFormat;
   }
-  return MTLPixelFormatRGBA16Float;
+  return MTLPixelFormatBGRA8Unorm;
 }
+- (BOOL)extendedDynamicRange {
+  return _extendedDynamicRange;
+}
+
+- (void)setExtendedDynamicRange:(BOOL)enabled {
+  if (_extendedDynamicRange == enabled) {
+    return;
+  }
+  _extendedDynamicRange = enabled;
+  // Only half-float surfaces carry values above SDR white. Core Animation
+  // re-evaluates EDR when contents are committed, so re-commit them.
+  BOOL halfFloat = self.pixelFormat == MTLPixelFormatRGBA16Float;
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  if (@available(iOS 17.0, *)) {
+    self.layer.wantsExtendedDynamicRangeContent = enabled && halfFloat;
+  }
+  id contents = self.layer.contents;
+  if (contents) {
+    self.layer.contents = nil;
+    self.layer.contents = contents;
+  }
+  [CATransaction commit];
+}
+
 - (BOOL)isWideGamutSupported {
   FML_DCHECK(self.screen);
 
@@ -155,6 +181,16 @@ FLUTTER_ASSERT_ARC
   return self;
 }
 
+static void PrintWideGamutWarningOnce() {
+  static BOOL did_print = NO;
+  if (did_print) {
+    return;
+  }
+  FML_DLOG(WARNING) << "Rendering wide gamut colors is turned on but isn't "
+                       "supported, downgrading the color gamut to sRGB.";
+  did_print = YES;
+}
+
 - (void)layoutSubviews {
   if ([self.layer isKindOfClass:[CAMetalLayer class]]) {
 // It is a known Apple bug that CAMetalLayer incorrectly reports its supported
@@ -168,9 +204,24 @@ FLUTTER_ASSERT_ARC
     layer.contentsScale = screenScale;
     layer.rasterizationScale = screenScale;
     layer.framebufferOnly = flutter::Settings::kSurfaceDataAccessible ? NO : YES;
-    // Pixel format, color space, and EDR flags are set by FlutterMetalLayer.init.
-    // F16 + ExtendedSRGB is a superset of the previous BGRA10_XR wide gamut config
-    // and additionally enables EDR headroom allocation for HDR content.
+    if (_isWideGamutEnabled && self.isWideGamutSupported) {
+      // Half-float extended sRGB so values above SDR white survive
+      // composition and can be shown as EDR once requested.
+      fml::CFRef<CGColorSpaceRef> srgb(CGColorSpaceCreateWithName(kCGColorSpaceExtendedSRGB));
+      layer.colorspace = srgb;
+      layer.pixelFormat = MTLPixelFormatRGBA16Float;
+      layer.contentsFormat = kCAContentsFormatRGBA16Float;
+      if (@available(iOS 17.0, *)) {
+        layer.wantsExtendedDynamicRangeContent = _extendedDynamicRange;
+      }
+      // Automatic tone mapping compresses values above white instead of
+      // clipping (SDR) or passing them through (EDR); keep them linear.
+      if (@available(iOS 18.0, *)) {
+        layer.toneMapMode = CAToneMapModeNever;
+      }
+    } else if (_isWideGamutEnabled && !self.isWideGamutSupported) {
+      PrintWideGamutWarningOnce();
+    }
   }
 
   [super layoutSubviews];
