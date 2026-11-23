@@ -340,10 +340,7 @@ ImageExternalTextureVKImpeller::IngestHardwareBuffer(AHardwareBuffer* ahb,
     }
   }
 
-  if (!impeller_context_->GetCommandQueue()
-           ->Submit({buffer}, /*completion_callback=*/nullptr,
-                    /*block_on_schedule=*/false)
-           .ok()) {
+  if (!impeller_context_->GetCommandQueue()->Submit({buffer}).ok()) {
     return nullptr;
   }
 
