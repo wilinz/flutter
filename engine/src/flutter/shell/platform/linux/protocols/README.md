@@ -12,3 +12,6 @@ wayland-scanner private-code color-management-v1.xml color-management-v1-protoco
 
 The generated files are checked in because the Linux sysroot does not ship
 this protocol.
+
+After regenerating, run `ci/format.sh --fix`: it renames the header guard to
+the engine convention.
