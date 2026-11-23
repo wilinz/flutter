@@ -179,12 +179,7 @@ extern CFTimeInterval display_link_target;
   if (self = [super init]) {
     _preferredDevice = MTLCreateSystemDefaultDevice();
     self.device = self.preferredDevice;
-    // F16 compositing surface: allows HDR values >1.0 to render directly.
-    // Paired with kCGColorSpaceExtendedSRGB so alpha blending is visually
-    // identical to BGRA8. See FlutterSurface.mm (macOS) for details.
-    self.pixelFormat = MTLPixelFormatRGBA16Float;
-    self.wantsExtendedDynamicRangeContent = YES;
-    self.contentsFormat = kCAContentsFormatRGBA16Float;
+    self.pixelFormat = MTLPixelFormatBGRA8Unorm;
     _availableTextures = [[NSMutableSet alloc] init];
 
     FlutterMetalLayerDisplayLinkProxy* proxy =
@@ -310,12 +305,7 @@ extern CFTimeInterval display_link_target;
     CFStringRef name = CGColorSpaceGetName(self.colorspace);
     IOSurfaceSetValue(res, kIOSurfaceColorSpace, name);
   } else {
-    // Extended sRGB: gamma-encoded sRGB with values >1.0 for HDR/EDR.
-    // F16 pixel format + ExtendedSRGB triggers EDR headroom allocation on iOS.
-    // The sRGB gamma transfer function keeps UI alpha blending correct.
-    // HDR external textures (linear P3) are converted to gamma sRGB via
-    // Impeller's texture_fill shader (P3→sRGB matrix + sRGB OETF).
-    IOSurfaceSetValue(res, kIOSurfaceColorSpace, kCGColorSpaceExtendedSRGB);
+    IOSurfaceSetValue(res, kIOSurfaceColorSpace, kCGColorSpaceSRGB);
   }
   return (__bridge_transfer IOSurface*)res;
 }

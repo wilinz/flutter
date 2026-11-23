@@ -61,6 +61,12 @@
 - (MTLPixelFormat)pixelFormat;
 
 /**
+ * Requests extended dynamic range presentation. Only half-float (wide gamut)
+ * surfaces carry values above SDR white. Defaults to NO.
+ */
+@property(nonatomic) BOOL extendedDynamicRange;
+
+/**
  * A method that sets the instrinsic content size
  * This is used when autoResizable is enabled.
  */
