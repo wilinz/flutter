@@ -64,6 +64,19 @@
 - (void)setEnableWideGamut:(BOOL)enableWideGamut;
 
 /**
+ * Whether surfaces are half-float (wide gamut) and can carry EDR values.
+ */
+@property(readonly, nonatomic) BOOL wideGamut;
+
+/**
+ * Requests extended dynamic range presentation for half-float surfaces.
+ * Defaults to NO so that SDR content does not raise display headroom.
+ *
+ * Must be called on the platform thread.
+ */
+@property(nonatomic) BOOL extendedDynamicRange;
+
+/**
  * Returns a back buffer surface of the given size to which Flutter can render content.
  * A cached surface will be returned if available; otherwise a new one will be created.
  *
