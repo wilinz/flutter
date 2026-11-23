@@ -276,9 +276,14 @@ ImageExternalTextureVKImpeller::IngestHardwareBuffer(AHardwareBuffer* ahb,
     // Cache hit: reuse the previously-constructed VkImage (same backing
     // AHB memory, already transitioned to SHADER_READ_ONLY_OPTIMAL). The
     // producer's new writes still need a fresh barrier, submitted below.
-    auto impeller_tex = existing_image->impeller_texture();
-    if (impeller_tex) {
-      texture = std::static_pointer_cast<impeller::TextureVK>(impeller_tex);
+    // Images in the cache are created with DlImageImpeller::Make below, which
+    // wraps the texture in a DlImageImpellerTexture.
+    if (existing_image->asImpellerImage() != nullptr) {
+      const auto* impeller_image =
+          static_cast<const impeller::DlImageImpellerTexture*>(
+              existing_image->asImpellerImage());
+      texture = std::static_pointer_cast<impeller::TextureVK>(
+          impeller_image->texture());
     }
   }
 

@@ -59,6 +59,10 @@ class DlImageImpellerTexture final : public DlImageImpeller {
   size_t GetApproximateByteSize() const override;
   OwningContext owning_context() const override { return owning_context_; }
 
+  /// The wrapped texture, for callers that created the image with |Make| and
+  /// need to reuse it outside of rendering.
+  const std::shared_ptr<Texture>& texture() const { return texture_; }
+
  private:
   std::shared_ptr<Texture> texture_;
   OwningContext owning_context_;
