@@ -531,9 +531,6 @@ TEST(FlutterSurfaceManager, DynamicSwitchNoOpWhenSameValue) {
 }
 
 static BOOL LayerRequestsEDR(CALayer* layer) {
-  if (@available(macOS 26.0, *)) {
-    return [layer.preferredDynamicRange isEqualToString:CADynamicRangeHigh];
-  }
   return layer.wantsExtendedDynamicRangeContent;
 }
 
