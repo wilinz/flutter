@@ -132,6 +132,7 @@ source_set("flutter_linux_sources") {
     "fl_framebuffer.cc",
     "fl_gl_fence.cc",
     "fl_gnome_settings.cc",
+    "fl_hdr_handler.cc",
     "fl_json_message_codec.cc",
     "fl_json_method_codec.cc",
     "fl_key_channel_responder.cc",

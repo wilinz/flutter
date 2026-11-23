@@ -17,6 +17,7 @@
 #include "flutter/shell/platform/linux/fl_display_monitor.h"
 #include "flutter/shell/platform/linux/fl_engine_private.h"
 #include "flutter/shell/platform/linux/fl_framebuffer.h"
+#include "flutter/shell/platform/linux/fl_hdr_handler.h"
 #include "flutter/shell/platform/linux/fl_keyboard_handler.h"
 #include "flutter/shell/platform/linux/fl_opengl_manager.h"
 #include "flutter/shell/platform/linux/fl_pixel_buffer_texture_private.h"
@@ -76,6 +77,9 @@ struct _FlEngine {
 
   // Implements the flutter/mousecursor channel.
   FlMouseCursorHandler* mouse_cursor_handler;
+
+  // Answers flutter/hdr; Linux presents SDR only.
+  FlHdrHandler* hdr_handler;
 
   // Manages textures rendered by native code.
   FlTextureRegistrar* texture_registrar;
@@ -621,6 +625,7 @@ static void fl_engine_dispose(GObject* object) {
   g_clear_object(&self->text_input_handler);
   g_clear_object(&self->keyboard_handler);
   g_clear_object(&self->mouse_cursor_handler);
+  g_clear_object(&self->hdr_handler);
   g_clear_object(&self->task_runner);
   {
     g_autoptr(GMutexLocker) locker =
@@ -718,6 +723,7 @@ static FlEngine* fl_engine_new_full(FlDartProject* project,
   self->keyboard_manager = fl_keyboard_manager_new(self);
   self->mouse_cursor_handler =
       fl_mouse_cursor_handler_new(self->binary_messenger);
+  self->hdr_handler = fl_hdr_handler_new(self->binary_messenger);
   self->accessibility_handler = fl_accessibility_handler_new(self);
 
   return self;
