@@ -62,13 +62,14 @@ static NSColor* GetBorderColorForLayer(int layer) {
 
 /// Creates sublayers for given layer, each one displaying a portion of the
 /// of the surface determined by a rectangle in the provided paint region.
-// Half-float surfaces use a half-float contents format; EDR is only requested
-// when the application opts in, since it raises display power use.
+// Half-float surfaces use a half-float contents format. EDR is only requested
+// when the application opts in, since it raises display power use. Values
+// above SDR white are shown up to the screen's current headroom and clipped
+// beyond it. preferredDynamicRange is not used: it needs a content headroom
+// tag, and tagging a fixed peak tone-maps the whole range into the display.
 static void SetExtendedRange(CALayer* layer, BOOL halfFloat, BOOL edr) {
   layer.contentsFormat = halfFloat ? kCAContentsFormatRGBA16Float : kCAContentsFormatRGBA8Uint;
-  if (@available(macOS 26.0, *)) {
-    layer.preferredDynamicRange = edr ? CADynamicRangeHigh : CADynamicRangeStandard;
-  } else if (@available(macOS 14.0, *)) {
+  if (@available(macOS 14.0, *)) {
     layer.wantsExtendedDynamicRangeContent = edr;
   }
 }
