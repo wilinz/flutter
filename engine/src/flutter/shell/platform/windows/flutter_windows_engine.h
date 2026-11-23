@@ -32,6 +32,7 @@
 #include "flutter/shell/platform/windows/flutter_desktop_messenger.h"
 #include "flutter/shell/platform/windows/flutter_project_bundle.h"
 #include "flutter/shell/platform/windows/flutter_windows_texture_registrar.h"
+#include "flutter/shell/platform/windows/hdr_handler.h"
 #include "flutter/shell/platform/windows/host_window.h"
 #include "flutter/shell/platform/windows/keyboard_handler_base.h"
 #include "flutter/shell/platform/windows/keyboard_key_embedder_handler.h"
@@ -473,6 +474,9 @@ class FlutterWindowsEngine {
 
   // Handler for cursor events.
   std::unique_ptr<CursorHandler> cursor_handler_;
+
+  // Handler for the flutter/hdr channel.
+  std::unique_ptr<HdrHandler> hdr_handler_;
 
   // Handler for the flutter/platform channel.
   std::unique_ptr<PlatformHandler> platform_handler_;

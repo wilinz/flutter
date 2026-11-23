@@ -28,6 +28,13 @@ class MockManager : public flutter::egl::Manager {
   MOCK_METHOD(flutter::egl::Context*, render_context, (), (const, override));
   MOCK_METHOD(flutter::egl::Context*, resource_context, (), (const, override));
   MOCK_METHOD(bool, surface_origin_is_top_left, (), (const, override));
+  MOCK_METHOD(bool, is_rgba16float, (), (const, override));
+  MOCK_METHOD(EGLSurface,
+              CreateSurfaceFromHandle,
+              (EGLenum, EGLClientBuffer, const EGLint*, bool),
+              (const, override));
+  MOCK_METHOD(EGLDisplay, egl_display, (), (const, override));
+  MOCK_METHOD(bool, GetDevice, (ID3D11Device**), (override));
 
  private:
   FML_DISALLOW_COPY_AND_ASSIGN(MockManager);

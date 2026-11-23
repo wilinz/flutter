@@ -881,6 +881,12 @@ deps = {
 
 hooks = [
   {
+    # Let ANGLE tag D3D11 swap chains as scRGB for HDR presentation.
+    'name': 'angle_scrgb_linear_patch',
+    'pattern': '.',
+    'action': ['python3', 'engine/src/flutter/tools/hdr/apply_angle_patch.py'],
+  },
+  {
     # Generate the Dart SDK's .dart_tool/package_confg.json file.
     'name': 'Generate .dart_tool/package_confg.json',
     'pattern': '.',

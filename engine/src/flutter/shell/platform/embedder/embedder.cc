@@ -58,6 +58,7 @@ extern const intptr_t kPlatformStrongDillSize;
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/embedder/embedder_engine.h"
 #include "flutter/shell/platform/embedder/embedder_external_texture_resolver.h"
+#include "flutter/shell/platform/embedder/embedder_linear_output.h"
 #include "flutter/shell/platform/embedder/embedder_platform_message_response.h"
 #include "flutter/shell/platform/embedder/embedder_render_target.h"
 #include "flutter/shell/platform/embedder/embedder_render_target_skia.h"
@@ -306,11 +307,27 @@ static std::optional<SkColorType> FlutterFormatToSkColorType(uint32_t format) {
       return kBGRA_8888_SkColorType;
     case GL_RGBA8:
       return kRGBA_8888_SkColorType;
+    case GL_RGBA16F:
+      return kRGBA_F16_SkColorType;
     default:
       FML_LOG(ERROR) << "Cannot convert format " << format
                      << " to SkColorType.";
       return std::nullopt;
   }
+}
+
+// Linear sRGB primaries whose stored values are the linear values times
+// GetLinearOutputScale(), so SDR white maps to the display's SDR white level
+// on linear scRGB swap chains.
+static sk_sp<SkColorSpace> MakeLinearOutputColorSpace() {
+  const float scale = flutter::GetLinearOutputScale();
+  if (scale == 1.0f) {
+    return SkColorSpace::MakeSRGBLinear();
+  }
+  // Decoding multiplies by 1/scale, so encoding multiplies by scale.
+  const skcms_TransferFunction fn = {1.0f, 1.0f / scale, 0.0f, 1.0f / scale,
+                                     0.0f, 0.0f,         0.0f};
+  return SkColorSpace::MakeRGB(fn, SkNamedGamut::kSRGB);
 }
 
 #endif
@@ -936,12 +953,23 @@ static sk_sp<SkSurface> MakeSkSurfaceFromBackingStore(
     return nullptr;
   }
 
+  // F16 backing stores use a linear color space because HDR-capable GL
+  // presentation paths typically tag their swap chains as linear scRGB
+  // (e.g. DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 on Windows/ANGLE,
+  // equivalent tagging on Wayland HDR). Writing gamma-encoded values into
+  // a linear-tagged surface brightens midtones. 8-bit backing stores keep
+  // gamma sRGB semantics.
+  sk_sp<SkColorSpace> color_space =
+      (color_type.value() == kRGBA_F16_SkColorType)
+          ? MakeLinearOutputColorSpace()
+          : SkColorSpace::MakeSRGB();
+
   auto surface = SkSurfaces::WrapBackendRenderTarget(
       context,                      //  context
       backend_render_target,        // backend render target
       kBottomLeft_GrSurfaceOrigin,  // surface origin
       color_type.value(),           // color type
-      SkColorSpace::MakeSRGB(),     // color space
+      color_space,                  // color space
       &surface_properties,          // surface properties
       static_cast<SkSurfaces::RenderTargetReleaseProc>(
           framebuffer->destruction_callback),  // release proc
@@ -983,12 +1011,18 @@ static sk_sp<SkSurface> MakeSkSurfaceFromBackingStore(
     return nullptr;
   }
 
+  // See matching F16/linear-scRGB handling in the framebuffer variant above.
+  sk_sp<SkColorSpace> color_space =
+      (color_type.value() == kRGBA_F16_SkColorType)
+          ? MakeLinearOutputColorSpace()
+          : SkColorSpace::MakeSRGB();
+
   auto sk_surface = SkSurfaces::WrapBackendRenderTarget(
       context,                      //  context
       backend_render_target,        // backend render target
       kBottomLeft_GrSurfaceOrigin,  // surface origin
       color_type.value(),           // color type
-      SkColorSpace::MakeSRGB(),     // color space
+      color_space,                  // color space
       &surface_properties,          // surface properties
       static_cast<SkSurfaces::RenderTargetReleaseProc>(
           surface->destruction_callback),  // release proc

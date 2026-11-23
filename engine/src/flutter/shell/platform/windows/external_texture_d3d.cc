@@ -102,8 +102,7 @@ bool ExternalTextureD3d::CreateOrUpdateTexture(
       auto* d3d_texture = static_cast<ID3D11Texture2D*>(handle);
       D3D11_TEXTURE2D_DESC tex_desc;
       d3d_texture->GetDesc(&tex_desc);
-      is_rgba16float_ =
-          (tex_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT);
+      is_rgba16float_ = (tex_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT);
     } else if (type_ == kFlutterDesktopGpuSurfaceTypeDxgiSharedHandle) {
       // Open the shared resource on ANGLE's device: needed to query format,
       // and retained for FP16 so we can bind via EGL_D3D_TEXTURE_ANGLE.
@@ -115,8 +114,7 @@ bool ExternalTextureD3d::CreateOrUpdateTexture(
         if (SUCCEEDED(hr) && angle_device_texture_) {
           D3D11_TEXTURE2D_DESC tex_desc;
           angle_device_texture_->GetDesc(&tex_desc);
-          is_rgba16float_ =
-              (tex_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT);
+          is_rgba16float_ = (tex_desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT);
         }
       }
     }
@@ -149,13 +147,13 @@ bool ExternalTextureD3d::CreateOrUpdateTexture(
     egl_surface_ = egl_manager_->CreateSurfaceFromHandle(
         use_direct_pointer ? EGL_D3D_TEXTURE_ANGLE
                            : EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE,
-        buffer, attributes);
+        buffer, attributes, is_rgba16float_);
 
     if (egl_surface_ == EGL_NO_SURFACE) {
       EGLint err = eglGetError();
-      FML_LOG(ERROR) << "CreateSurfaceFromHandle failed: eglError=0x" << std::hex
-                     << err << " direct=" << std::dec << use_direct_pointer
-                     << " fp16=" << is_rgba16float_;
+      FML_LOG(ERROR) << "CreateSurfaceFromHandle failed: eglError=0x"
+                     << std::hex << err << " direct=" << std::dec
+                     << use_direct_pointer << " fp16=" << is_rgba16float_;
     } else if (eglBindTexImage(egl_manager_->egl_display(), egl_surface_,
                                EGL_BACK_BUFFER) == EGL_FALSE) {
       EGLint err = eglGetError();
