@@ -1,0 +1,144 @@
+name: Build HDR engine (Linux, Android, Windows)
+
+# Compile check of this branch's engine changes for the platforms that cannot
+# be built on a Mac. Builds the profile embedder of each platform; uploads
+# nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Platforms (JSON list of linux, android, windows)'
+        required: true
+        default: '["linux","android","windows"]'
+
+permissions:
+  contents: read
+
+jobs:
+  unix:
+    if: contains(fromJSON(inputs.platforms), 'linux') || contains(fromJSON(inputs.platforms), 'android')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            vars: '"download_linux_deps": True, "download_android_deps": False,'
+            gn: --runtime-mode profile --enable-fontconfig --prebuilt-dart-sdk --no-lto --target-dir ci/host_profile_desktop
+            out: ci/host_profile_desktop
+            target: flutter/shell/platform/linux:flutter_gtk
+          - platform: android
+            vars: '"download_linux_deps": True, "download_android_deps": True,'
+            gn: --android --android-cpu arm64 --runtime-mode profile --target-dir ci/android_profile_arm64
+            out: ci/android_profile_arm64
+            target: flutter/shell/platform/android:android_jar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    steps:
+      - name: Skip unselected platform
+        id: pick
+        run: |
+          case '${{ inputs.platforms }}' in *'"${{ matrix.platform }}"'*) echo run=1 >> "$GITHUB_OUTPUT";; *) echo run=0 >> "$GITHUB_OUTPUT";; esac
+
+      - name: Free disk space
+        if: steps.pick.outputs.run == '1'
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache \
+            /usr/local/share/boost /usr/local/.ghcup /usr/share/swift || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Check out
+        if: steps.pick.outputs.run == '1'
+        uses: actions/checkout@v4
+        with:
+          path: flutter
+          fetch-depth: 1
+
+      - name: Install depot_tools
+        if: steps.pick.outputs.run == '1'
+        run: |
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$RUNNER_TEMP/depot_tools"
+          echo "$RUNNER_TEMP/depot_tools" >> "$GITHUB_PATH"
+
+      - name: gclient sync
+        if: steps.pick.outputs.run == '1'
+        working-directory: flutter
+        run: |
+          cat > .gclient <<EOF
+          solutions = [
+            {
+              "managed": False,
+              "name": ".",
+              "url": "https://github.com/${GITHUB_REPOSITORY}.git",
+              "deps_file": "DEPS",
+              "custom_vars": {
+                ${{ matrix.vars }}
+                "download_fuchsia_deps": False,
+              },
+            },
+          ]
+          EOF
+          gclient sync --no-history -D --shallow
+          df -h /
+
+      - name: Build
+        if: steps.pick.outputs.run == '1'
+        working-directory: flutter/engine/src
+        run: |
+          ./flutter/tools/gn ${{ matrix.gn }} --no-rbe --no-goma
+          ninja -C "out/${{ matrix.out }}" ${{ matrix.target }}
+          df -h /
+
+  windows:
+    if: contains(fromJSON(inputs.platforms), 'windows')
+    runs-on: windows-2022
+    timeout-minutes: 340
+    env:
+      DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Enable long paths
+        run: git config --system core.longpaths true
+
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          path: flutter
+          fetch-depth: 1
+
+      - name: Install depot_tools
+        run: |
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$RUNNER_TEMP/depot_tools"
+          echo "$RUNNER_TEMP/depot_tools" >> "$GITHUB_PATH"
+
+      - name: gclient sync
+        working-directory: flutter
+        run: |
+          cat > .gclient <<EOF
+          solutions = [
+            {
+              "managed": False,
+              "name": ".",
+              "url": "https://github.com/${GITHUB_REPOSITORY}.git",
+              "deps_file": "DEPS",
+              "custom_vars": {
+                "download_windows_deps": True,
+                "download_android_deps": False,
+                "download_fuchsia_deps": False,
+              },
+            },
+          ]
+          EOF
+          gclient sync --no-history -D --shallow
+          df -h
+
+      - name: Build
+        working-directory: flutter/engine/src
+        run: |
+          python3 ./flutter/tools/gn --runtime-mode profile --no-lto --target-dir ci/host_profile --no-rbe --no-goma
+          ninja -C out/ci/host_profile flutter/shell/platform/windows:flutter_windows
+          df -h
