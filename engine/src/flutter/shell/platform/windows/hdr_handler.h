@@ -21,7 +21,7 @@ class FlutterWindowsEngine;
 // Reports whether the implicit view presents through an F16 linear scRGB
 // swap chain and the headroom of its monitor (peak luminance over the SDR
 // white level when the desktop is in HDR mode, else 1.0). Also keeps the
-// linear output scale in step with the SDR white level so that SDR white
+// engine's HDR output scale in step with the SDR white level so SDR white
 // renders at the level the desktop uses for SDR content.
 //
 // The swap chain stays scRGB for the lifetime of the surface, so

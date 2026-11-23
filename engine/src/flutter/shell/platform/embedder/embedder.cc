@@ -58,7 +58,6 @@ extern const intptr_t kPlatformStrongDillSize;
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/embedder/embedder_engine.h"
 #include "flutter/shell/platform/embedder/embedder_external_texture_resolver.h"
-#include "flutter/shell/platform/embedder/embedder_linear_output.h"
 #include "flutter/shell/platform/embedder/embedder_platform_message_response.h"
 #include "flutter/shell/platform/embedder/embedder_render_target.h"
 #include "flutter/shell/platform/embedder/embedder_render_target_skia.h"
@@ -319,20 +318,6 @@ static std::optional<SkColorType> FlutterFormatToSkColorType(uint32_t format) {
                      << " to SkColorType.";
       return std::nullopt;
   }
-}
-
-// Linear sRGB primaries whose stored values are the linear values times
-// GetLinearOutputScale(), so SDR white maps to the display's SDR white level
-// on linear scRGB swap chains.
-static sk_sp<SkColorSpace> MakeLinearOutputColorSpace() {
-  const float scale = flutter::GetLinearOutputScale();
-  if (scale == 1.0f) {
-    return SkColorSpace::MakeSRGBLinear();
-  }
-  // Decoding multiplies by 1/scale, so encoding multiplies by scale.
-  const skcms_TransferFunction fn = {1.0f, 1.0f / scale, 0.0f, 1.0f / scale,
-                                     0.0f, 0.0f,         0.0f};
-  return SkColorSpace::MakeRGB(fn, SkNamedGamut::kSRGB);
 }
 
 #endif
@@ -609,7 +594,7 @@ InferMetalPlatformViewCreationCallback(
           metal_dispatch_table = {
               .present = metal_present,
               .get_texture = metal_get_texture,
-      };
+          };
       impeller::Flags impeller_flags;
       impeller_flags.use_sdfs = shell.GetSettings().impeller_use_sdfs;
       embedder_surface =
@@ -624,7 +609,7 @@ InferMetalPlatformViewCreationCallback(
           metal_dispatch_table = {
               .present = metal_present,
               .get_texture = metal_get_texture,
-      };
+          };
       embedder_surface = std::make_unique<flutter::EmbedderSurfaceMetalSkia>(
           const_cast<flutter::GPUMTLDeviceHandle>(config->metal.device),
           const_cast<flutter::GPUMTLCommandQueueHandle>(
@@ -709,7 +694,7 @@ InferVulkanPlatformViewCreationCallback(
                 reinterpret_cast<PFN_vkGetInstanceProcAddr>(proc_addr),
             .get_next_image = vulkan_get_next_image,
             .present_image = vulkan_present_image_callback,
-    };
+        };
 
     std::unique_ptr<flutter::EmbedderSurfaceVulkanImpeller> embedder_surface =
         std::make_unique<flutter::EmbedderSurfaceVulkanImpeller>(
@@ -744,7 +729,7 @@ InferVulkanPlatformViewCreationCallback(
                 reinterpret_cast<PFN_vkGetInstanceProcAddr>(proc_addr),
             .get_next_image = vulkan_get_next_image,
             .present_image = vulkan_present_image_callback,
-    };
+        };
 
     std::unique_ptr<flutter::EmbedderSurfaceVulkan> embedder_surface =
         std::make_unique<flutter::EmbedderSurfaceVulkan>(
@@ -834,7 +819,7 @@ InferSoftwarePlatformViewCreationCallback(
   flutter::EmbedderSurfaceSoftware::SoftwareDispatchTable
       software_dispatch_table = {
           software_present_backing_store,  // required
-  };
+      };
 
   return fml::MakeCopyable(
       [software_dispatch_table, platform_dispatch_table,
@@ -966,7 +951,7 @@ static sk_sp<SkSurface> MakeSkSurfaceFromBackingStore(
   // gamma sRGB semantics.
   sk_sp<SkColorSpace> color_space =
       (color_type.value() == kRGBA_F16_SkColorType)
-          ? MakeLinearOutputColorSpace()
+          ? SkColorSpace::MakeSRGBLinear()
           : SkColorSpace::MakeSRGB();
 
   auto surface = SkSurfaces::WrapBackendRenderTarget(
@@ -1019,7 +1004,7 @@ static sk_sp<SkSurface> MakeSkSurfaceFromBackingStore(
   // See matching F16/linear-scRGB handling in the framebuffer variant above.
   sk_sp<SkColorSpace> color_space =
       (color_type.value() == kRGBA_F16_SkColorType)
-          ? MakeLinearOutputColorSpace()
+          ? SkColorSpace::MakeSRGBLinear()
           : SkColorSpace::MakeSRGB();
 
   auto sk_surface = SkSurfaces::WrapBackendRenderTarget(
@@ -2525,7 +2510,7 @@ FlutterEngineResult FlutterEngineInitialize(size_t version,
           on_pre_engine_restart_callback,             //
           channel_update_callback,                    //
           view_focus_change_request_callback,         //
-  };
+      };
 
   impeller::Flags impeller_flags;
   impeller_flags.use_sdfs = settings.impeller_use_sdfs;

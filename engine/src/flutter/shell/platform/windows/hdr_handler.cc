@@ -13,7 +13,6 @@
 #include <vector>
 
 #include "flutter/shell/platform/common/client_wrapper/include/flutter/standard_method_codec.h"
-#include "flutter/shell/platform/embedder/embedder_linear_output.h"
 #include "flutter/shell/platform/windows/egl/manager.h"
 #include "flutter/shell/platform/windows/flutter_windows_engine.h"
 #include "flutter/shell/platform/windows/flutter_windows_view.h"
@@ -166,10 +165,10 @@ EncodableValue HdrHandler::Capabilities() {
   double headroom = 1.0;
   if (surface && state.hdr && state.sdr_white_nits > 0.0) {
     headroom = std::max(1.0, state.peak_nits / state.sdr_white_nits);
-    SetLinearOutputScale(
+    engine_->SetHdrOutputScale(
         static_cast<float>(state.sdr_white_nits / kScrgbReferenceNits));
   } else {
-    SetLinearOutputScale(1.0f);
+    engine_->SetHdrOutputScale(1.0f);
   }
 
   return EncodableValue(EncodableMap{

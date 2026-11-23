@@ -5,6 +5,7 @@
 #ifndef FLUTTER_SHELL_PLATFORM_WINDOWS_FLUTTER_WINDOWS_ENGINE_H_
 #define FLUTTER_SHELL_PLATFORM_WINDOWS_FLUTTER_WINDOWS_ENGINE_H_
 
+#include <atomic>
 #include <chrono>
 #include <map>
 #include <memory>
@@ -183,6 +184,12 @@ class FlutterWindowsEngine {
   // The EGL manager object. If this is nullptr, then we are
   // rendering using software instead of OpenGL.
   egl::Manager* egl_manager() const { return egl_manager_.get(); }
+
+  // Scale applied to linear values presented on F16 scRGB swap chains so SDR
+  // white lands on the desktop's SDR white level (scRGB fixes 1.0 at 80 nits).
+  // Set on the platform thread, read on the raster thread.
+  void SetHdrOutputScale(float scale) { hdr_output_scale_.store(scale); }
+  float hdr_output_scale() const { return hdr_output_scale_.load(); }
 
   WindowProcDelegateManager* window_proc_delegate_manager() {
     return window_proc_delegate_manager_.get();
@@ -477,6 +484,9 @@ class FlutterWindowsEngine {
 
   // Handler for the flutter/hdr channel.
   std::unique_ptr<HdrHandler> hdr_handler_;
+
+  // See |SetHdrOutputScale|.
+  std::atomic<float> hdr_output_scale_ = 1.0f;
 
   // Handler for the flutter/platform channel.
   std::unique_ptr<PlatformHandler> platform_handler_;

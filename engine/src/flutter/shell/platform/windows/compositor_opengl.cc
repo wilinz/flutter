@@ -180,6 +180,33 @@ bool CompositorOpenGL::CollectBackingStore(const FlutterBackingStore* store) {
   return true;
 }
 
+// Draws a texture to the whole viewport, optionally decoding extended sRGB
+// (gamma encoded, mirrored for negative values) to linear, then scaling.
+constexpr char kPresentVertexShader[] =
+    "attribute vec2 position;\n"
+    "varying vec2 uv;\n"
+    "void main() {\n"
+    "  uv = position * 0.5 + 0.5;\n"
+    "  gl_Position = vec4(position, 0.0, 1.0);\n"
+    "}\n";
+
+constexpr char kPresentFragmentShader[] =
+    "precision highp float;\n"
+    "uniform sampler2D frame;\n"
+    "uniform float scale;\n"
+    "uniform float decode;\n"
+    "varying vec2 uv;\n"
+    "void main() {\n"
+    "  vec4 color = texture2D(frame, uv);\n"
+    "  if (decode > 0.5) {\n"
+    "    vec3 a = abs(color.rgb);\n"
+    "    vec3 decoded = mix(a / 12.92, pow((a + 0.055) / 1.055, vec3(2.4)),\n"
+    "                       step(0.04045, a));\n"
+    "    color.rgb = sign(color.rgb) * decoded;\n"
+    "  }\n"
+    "  gl_FragColor = vec4(color.rgb * scale, color.a);\n"
+    "}\n";
+
 bool CompositorOpenGL::Present(FlutterWindowsView* view,
                                const FlutterLayer** layers,
                                size_t layers_count) {
@@ -231,6 +258,18 @@ bool CompositorOpenGL::Present(FlutterWindowsView* view,
   // Prevents regressions like: https://github.com/flutter/flutter/issues/140828
   // See OpenGL specification version 4.6, section 18.3.1.
   gl_->Disable(GL_SCISSOR_TEST);
+
+  if (format_.pixel_type == GL_HALF_FLOAT) {
+    if (!PresentExtendedRange(source_id, width, height)) {
+      return false;
+    }
+    if (!surface->SwapBuffers()) {
+      return false;
+    }
+    view->OnFramePresented();
+    return true;
+  }
+
   gl_->BindFramebuffer(GL_READ_FRAMEBUFFER, source_id);
   gl_->BindFramebuffer(GL_DRAW_FRAMEBUFFER, kWindowFrameBufferId);
 
@@ -252,6 +291,107 @@ bool CompositorOpenGL::Present(FlutterWindowsView* view,
   }
 
   view->OnFramePresented();
+  return true;
+}
+
+bool CompositorOpenGL::CreatePresentProgram() {
+  auto compile = [this](GLenum type, const char* source) -> GLuint {
+    GLuint shader = gl_->CreateShader(type);
+    gl_->ShaderSource(shader, 1, &source, nullptr);
+    gl_->CompileShader(shader);
+    GLint status = GL_FALSE;
+    gl_->GetShaderiv(shader, GL_COMPILE_STATUS, &status);
+    if (status != GL_TRUE) {
+      FML_LOG(ERROR) << "Failed to compile the HDR present shader.";
+      gl_->DeleteShader(shader);
+      return 0;
+    }
+    return shader;
+  };
+
+  GLuint vertex_shader = compile(GL_VERTEX_SHADER, kPresentVertexShader);
+  GLuint fragment_shader = compile(GL_FRAGMENT_SHADER, kPresentFragmentShader);
+  if (vertex_shader == 0 || fragment_shader == 0) {
+    return false;
+  }
+
+  GLuint program = gl_->CreateProgram();
+  gl_->AttachShader(program, vertex_shader);
+  gl_->AttachShader(program, fragment_shader);
+  gl_->BindAttribLocation(program, 0, "position");
+  gl_->LinkProgram(program);
+  gl_->DeleteShader(vertex_shader);
+  gl_->DeleteShader(fragment_shader);
+  GLint status = GL_FALSE;
+  gl_->GetProgramiv(program, GL_LINK_STATUS, &status);
+  if (status != GL_TRUE) {
+    FML_LOG(ERROR) << "Failed to link the HDR present program.";
+    gl_->DeleteProgram(program);
+    return false;
+  }
+
+  present_program_ = program;
+  present_scale_location_ = gl_->GetUniformLocation(program, "scale");
+  present_decode_location_ = gl_->GetUniformLocation(program, "decode");
+
+  // A triangle strip covering the viewport.
+  const GLfloat vertices[] = {-1, -1, 1, -1, -1, 1, 1, 1};
+  gl_->GenBuffers(1, &present_vertex_buffer_);
+  gl_->BindBuffer(GL_ARRAY_BUFFER, present_vertex_buffer_);
+  gl_->BufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+  return true;
+}
+
+bool CompositorOpenGL::PresentExtendedRange(GLuint source_framebuffer,
+                                            GLint width,
+                                            GLint height) {
+  if (present_program_ == 0 && !CreatePresentProgram()) {
+    return false;
+  }
+
+  // Resolve the frame into a single-sample texture that can be sampled.
+  if (present_texture_ == 0 || present_width_ != width ||
+      present_height_ != height) {
+    if (present_texture_ == 0) {
+      gl_->GenTextures(1, &present_texture_);
+      gl_->GenFramebuffers(1, &present_framebuffer_);
+    }
+    gl_->BindTexture(GL_TEXTURE_2D, present_texture_);
+    gl_->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    gl_->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl_->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl_->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl_->TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA,
+                    GL_HALF_FLOAT, nullptr);
+    gl_->BindFramebuffer(GL_FRAMEBUFFER, present_framebuffer_);
+    gl_->FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                              GL_TEXTURE_2D, present_texture_, 0);
+    present_width_ = width;
+    present_height_ = height;
+  }
+
+  gl_->BindFramebuffer(GL_READ_FRAMEBUFFER, source_framebuffer);
+  gl_->BindFramebuffer(GL_DRAW_FRAMEBUFFER, present_framebuffer_);
+  GetBlitFramebufferProc (*gl_)(0, 0, width, height, 0, 0, width, height,
+                                GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+  // Draw it to the window with the same pixel mapping as a blit.
+  gl_->BindFramebuffer(GL_FRAMEBUFFER, kWindowFrameBufferId);
+  gl_->Viewport(0, 0, width, height);
+  gl_->Disable(GL_BLEND);
+  gl_->UseProgram(present_program_);
+  const GLfloat scale = engine_->hdr_output_scale();
+  const GLfloat decode = enable_impeller_ ? 1.0f : 0.0f;
+  gl_->Uniform1fv(present_scale_location_, 1, &scale);
+  gl_->Uniform1fv(present_decode_location_, 1, &decode);
+  gl_->ActiveTexture(GL_TEXTURE0);
+  gl_->BindTexture(GL_TEXTURE_2D, present_texture_);
+  gl_->BindBuffer(GL_ARRAY_BUFFER, present_vertex_buffer_);
+  gl_->EnableVertexAttribArray(0);
+  gl_->VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+  gl_->DrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+  gl_->BindTexture(GL_TEXTURE_2D, 0);
+  gl_->UseProgram(0);
   return true;
 }
 

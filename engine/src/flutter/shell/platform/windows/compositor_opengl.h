@@ -81,6 +81,29 @@ class CompositorOpenGL : public Compositor {
   // Clear the view's surface and removes any previously presented layers.
   bool Clear(FlutterWindowsView* view);
 
+  // Draws the half float frame in |source_framebuffer| to the window surface
+  // as linear scRGB: Impeller's gamma-encoded values are decoded, and all
+  // values are scaled so SDR white lands on the desktop's SDR white level.
+  bool PresentExtendedRange(GLuint source_framebuffer,
+                            GLint width,
+                            GLint height);
+
+  // Creates the program used by |PresentExtendedRange|.
+  bool CreatePresentProgram();
+
+  // Program, vertex buffer and uniforms used by |PresentExtendedRange|.
+  GLuint present_program_ = 0;
+  GLuint present_vertex_buffer_ = 0;
+  GLint present_scale_location_ = -1;
+  GLint present_decode_location_ = -1;
+
+  // Single-sample half float texture the frame is resolved into before it is
+  // drawn to the window, and its framebuffer and size.
+  GLuint present_texture_ = 0;
+  GLuint present_framebuffer_ = 0;
+  GLint present_width_ = 0;
+  GLint present_height_ = 0;
+
   FML_DISALLOW_COPY_AND_ASSIGN(CompositorOpenGL);
 };
 
