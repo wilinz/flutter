@@ -1,0 +1,231 @@
+From 958144772113f18cb65d40665c08c9cae9cb9575 Mon Sep 17 00:00:00 2001
+From: MylioScott <scott@mylio.com>
+Date: Thu, 23 Apr 2026 13:50:57 -0700
+Subject: [PATCH] D3D11: honor EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT via
+ SetColorSpace1
+
+The D3D11 backend previously did not advertise any
+EGL_EXT_gl_colorspace_scrgb(_linear) extension and provided no way for
+an embedder to tag a flip-model DXGI swap chain with an HDR color
+space. Without an explicit IDXGISwapChain3::SetColorSpace1 call,
+Windows composes FP16 swap chains as SDR regardless of the underlying
+pixel format, defeating HDR presentation on D3D11.
+
+- Renderer11::generateDisplayExtensions advertises
+  glColorspaceScrgbLinear = true.
+- SwapChainD3D adds a virtual setSwapChainColorSpace() hook with a
+  no-op default so non-D3D11 backends are unaffected.
+- SwapChain11 stores the EGL colorspace attribute and, after swap
+  chain creation in reset(), QueryInterfaces IDXGISwapChain3 and
+  calls SetColorSpace1 with DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709
+  when EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT was requested. Guarded by
+  CheckColorSpaceSupport so systems without HDR presentation support
+  log and skip gracefully rather than failing surface creation.
+  EGL_GL_COLORSPACE_SCRGB_EXT (gamma-encoded scRGB) has no direct
+  DXGI equivalent and is treated as a no-op; callers wanting HDR on
+  D3D11 should use the LINEAR variant.
+- SurfaceD3D propagates the EGL_GL_COLORSPACE surface attribute to
+  SwapChainD3D via the new setter, before resetSwapChain creates
+  the native DXGI swap chain.
+
+Callers must additionally request EGL_DIRECT_COMPOSITION_ANGLE to
+receive a flip-model swap chain; the default HWND path creates a
+BitBlt swap chain for which SetColorSpace1 is invalid.
+
+Verified end-to-end on Windows 11 with a 1000-nit HDR display: Flutter
+Windows rendering FP16 content through a DirectComposition swap chain
+shows HDR highlights with brightness identical to Windows Photos and
+proper response to the "HDR content brightness" system slider.
+---
+ src/libANGLE/renderer/d3d/SurfaceD3D.cpp      |  7 ++
+ src/libANGLE/renderer/d3d/SwapChainD3D.h      |  6 ++
+ .../renderer/d3d/d3d11/Renderer11.cpp         |  9 +++
+ .../renderer/d3d/d3d11/SwapChain11.cpp        | 73 ++++++++++++++++++-
+ src/libANGLE/renderer/d3d/d3d11/SwapChain11.h | 14 ++++
+ 5 files changed, 108 insertions(+), 1 deletion(-)
+
+diff --git a/src/libANGLE/renderer/d3d/SurfaceD3D.cpp b/src/libANGLE/renderer/d3d/SurfaceD3D.cpp
+index 8dcc225c10e..2bb48777e2a 100644
+--- a/src/libANGLE/renderer/d3d/SurfaceD3D.cpp
++++ b/src/libANGLE/renderer/d3d/SurfaceD3D.cpp
+@@ -203,6 +203,13 @@ egl::Error SurfaceD3D::resetSwapChain(const egl::Display *display)
+         return egl::Error(EGL_BAD_ALLOC);
+     }
+ 
++    // Propagate the EGL_GL_COLORSPACE attribute so backends that support HDR
++    // color space tagging (e.g. D3D11) can apply it before the native swap
++    // chain is created. Backends without HDR support see this as a no-op via
++    // the default implementation on SwapChainD3D.
++    mSwapChain->setSwapChainColorSpace(static_cast<EGLint>(
++        mState.attributes.get(EGL_GL_COLORSPACE, EGL_GL_COLORSPACE_LINEAR)));
++
+     // This is a bit risky to pass the proxy context here, but it can happen at almost any time.
+     DisplayD3D *displayD3D = GetImplAs<DisplayD3D>(display);
+     egl::Error error       = resetSwapChain(displayD3D, width, height);
+diff --git a/src/libANGLE/renderer/d3d/SwapChainD3D.h b/src/libANGLE/renderer/d3d/SwapChainD3D.h
+index fcbab95c8dc..7951abb34c8 100644
+--- a/src/libANGLE/renderer/d3d/SwapChainD3D.h
++++ b/src/libANGLE/renderer/d3d/SwapChainD3D.h
+@@ -71,6 +71,12 @@ class SwapChainD3D : angle::NonCopyable
+ 
+     virtual egl::Error getSyncValues(EGLuint64KHR *ust, EGLuint64KHR *msc, EGLuint64KHR *sbc) = 0;
+ 
++    // Optional hook for the swap-chain backend to pick up the EGL_GL_COLORSPACE
++    // attribute the surface was created with. Backends that support HDR
++    // colorspaces (D3D11) use this to tag the native swap chain; other
++    // backends (D3D9) can leave this as a no-op.
++    virtual void setSwapChainColorSpace(EGLint /*colorspace*/) {}
++
+   protected:
+     const GLenum mOffscreenRenderTargetFormat;
+     const GLenum mDepthBufferFormat;
+diff --git a/src/libANGLE/renderer/d3d/d3d11/Renderer11.cpp b/src/libANGLE/renderer/d3d/d3d11/Renderer11.cpp
+index 1569c08fb2c..6373a566917 100644
+--- a/src/libANGLE/renderer/d3d/d3d11/Renderer11.cpp
++++ b/src/libANGLE/renderer/d3d/d3d11/Renderer11.cpp
+@@ -1417,6 +1417,15 @@ void Renderer11::generateDisplayExtensions(egl::DisplayExtensions *outExtensions
+     outExtensions->querySurfacePointer = true;
+     outExtensions->windowFixedSize     = true;
+ 
++    // Enable linear scRGB colorspace tagging for HDR-capable FP16 swap
++    // chains. The EGL_EXT_gl_colorspace_scrgb_linear extension lets an
++    // embedder request EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT on its window
++    // surface; SwapChain11 translates that into an explicit
++    // IDXGISwapChain3::SetColorSpace1 call so Windows treats the
++    // presented values as HDR scRGB rather than using DXGI's format-
++    // derived default.
++    outExtensions->glColorspaceScrgbLinear = true;
++
+     // If present path fast is active then the surface orientation extension isn't supported
+     outExtensions->surfaceOrientation = !mPresentPathFastEnabled;
+ 
+diff --git a/src/libANGLE/renderer/d3d/d3d11/SwapChain11.cpp b/src/libANGLE/renderer/d3d/d3d11/SwapChain11.cpp
+index 58e9f8c3f48..d71e01a2cb6 100644
+--- a/src/libANGLE/renderer/d3d/d3d11/SwapChain11.cpp
++++ b/src/libANGLE/renderer/d3d/d3d11/SwapChain11.cpp
+@@ -13,6 +13,7 @@
+ #include "libANGLE/renderer/d3d/d3d11/SwapChain11.h"
+ 
+ #include <EGL/eglext.h>
++#include <dxgi1_4.h>
+ 
+ #include "libANGLE/features.h"
+ #include "libANGLE/renderer/d3d/DisplayD3D.h"
+@@ -96,7 +97,8 @@ SwapChain11::SwapChain11(Renderer11 *renderer,
+       mPassThroughRS(),
+       mColorRenderTarget(this, renderer, false),
+       mDepthStencilRenderTarget(this, renderer, true),
+-      mEGLSamples(samples)
++      mEGLSamples(samples),
++      mColorSpace(EGL_GL_COLORSPACE_LINEAR)
+ {
+     // Check that if present path fast is active then we're using the default orientation
+     ASSERT(!mRenderer->presentPathFastEnabled() || orientation == 0);
+@@ -659,6 +661,75 @@ EGLint SwapChain11::reset(DisplayD3D *displayD3D,
+             mSwapChain1 = d3d11::DynamicCastComObject<IDXGISwapChain1>(mSwapChain);
+         }
+ 
++        // Tag the DXGI swap chain with the EGL colorspace the surface was
++        // created with. Required for HDR presentation: DXGI does not infer
++        // an HDR color space from the swap chain's pixel format alone, so
++        // HDR-capable apps must call IDXGISwapChain3::SetColorSpace1
++        // explicitly (available DXGI 1.4 / Windows 10). Gracefully
++        // skipped on pre-Windows-10 systems or when the target color
++        // space isn't supported for the current swap chain + display.
++        bool needs_colorspace = false;
++        DXGI_COLOR_SPACE_TYPE dxgi_colorspace =
++            DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;  // sentinel
++        switch (mColorSpace)
++        {
++            case EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT:
++                dxgi_colorspace = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
++                needs_colorspace = true;
++                break;
++            // Note: DXGI does not expose a dedicated "gamma scRGB" type;
++            // EGL_GL_COLORSPACE_SCRGB_EXT callers who want HDR should use
++            // the LINEAR variant. Other EGL colorspaces map to the DXGI
++            // default (sRGB) and need no explicit SetColorSpace1 call.
++            default:
++                break;
++        }
++
++        if (needs_colorspace)
++        {
++            IDXGISwapChain3 *swapChain3 = nullptr;
++            HRESULT qi_hr = mSwapChain->QueryInterface(
++                __uuidof(IDXGISwapChain3),
++                reinterpret_cast<void **>(&swapChain3));
++            if (SUCCEEDED(qi_hr) && swapChain3)
++            {
++                UINT support = 0;
++                HRESULT cs_hr =
++                    swapChain3->CheckColorSpaceSupport(dxgi_colorspace, &support);
++                if (SUCCEEDED(cs_hr) &&
++                    (support &
++                     DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT))
++                {
++                    HRESULT set_hr =
++                        swapChain3->SetColorSpace1(dxgi_colorspace);
++                    if (SUCCEEDED(set_hr))
++                    {
++                        WARN() << "SwapChain11: SetColorSpace1("
++                               << dxgi_colorspace << ") succeeded.";
++                    }
++                    else
++                    {
++                        ERR() << "SwapChain11: SetColorSpace1("
++                              << dxgi_colorspace
++                              << ") failed, " << gl::FmtHR(set_hr);
++                    }
++                }
++                else
++                {
++                    WARN() << "SwapChain11: CheckColorSpaceSupport("
++                           << dxgi_colorspace << ") hr=" << gl::FmtHR(cs_hr)
++                           << " support_flags=0x" << std::hex << support;
++                }
++                swapChain3->Release();
++            }
++            else
++            {
++                WARN() << "SwapChain11: IDXGISwapChain3 unavailable "
++                       << gl::FmtHR(qi_hr)
++                       << "; requested colorspace not applied.";
++            }
++        }
++
+         ID3D11Texture2D *backbufferTex = nullptr;
+         hr                             = mSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D),
+                                                                reinterpret_cast<LPVOID *>(&backbufferTex));
+diff --git a/src/libANGLE/renderer/d3d/d3d11/SwapChain11.h b/src/libANGLE/renderer/d3d/d3d11/SwapChain11.h
+index 2d7f0a00eec..4f93e07162e 100644
+--- a/src/libANGLE/renderer/d3d/d3d11/SwapChain11.h
++++ b/src/libANGLE/renderer/d3d/d3d11/SwapChain11.h
+@@ -62,6 +62,15 @@ class SwapChain11 final : public SwapChainD3D
+ 
+     egl::Error getSyncValues(EGLuint64KHR *ust, EGLuint64KHR *msc, EGLuint64KHR *sbc) override;
+ 
++    // Store the EGL_GL_COLORSPACE attribute from the surface so that reset()
++    // can tag the DXGI swap chain via IDXGISwapChain3::SetColorSpace1 once
++    // the chain is created. Must be called before reset() (SurfaceD3D does
++    // so during its own createSwapChain flow).
++    void setSwapChainColorSpace(EGLint colorspace) override
++    {
++        mColorSpace = colorspace;
++    }
++
+   private:
+     void release();
+     angle::Result initPassThroughResources(DisplayD3D *displayD3D);
+@@ -128,6 +137,11 @@ class SwapChain11 final : public SwapChainD3D
+ 
+     EGLint mEGLSamples;
+     LONGLONG mQPCFrequency;
++
++    // EGL colorspace attribute from the creating surface; applied to the
++    // DXGI swap chain inside reset() after the chain is created. Defaults
++    // to LINEAR which is a no-op (no SetColorSpace1 call).
++    EGLint mColorSpace;
+ };
+ 
+ }  // namespace rx
