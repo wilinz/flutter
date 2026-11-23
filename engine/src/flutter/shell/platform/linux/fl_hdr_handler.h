@@ -14,7 +14,8 @@ G_DECLARE_FINAL_TYPE(FlHdrHandler, fl_hdr_handler, FL, HDR_HANDLER, GObject);
 /**
  * FlHdrHandler:
  *
- * #FlHdrHandler answers the flutter/hdr channel for the implicit view.
+ * #FlHdrHandler answers the flutter/hdr channel for the view addressed by the
+ * optional "viewId" argument, or the implicit view.
  * Extended range presentation needs the Wayland subsurface renderer and a
  * compositor with wp_color_manager_v1; otherwise it reports SDR only.
  */

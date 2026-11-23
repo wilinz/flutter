@@ -17,6 +17,7 @@ static constexpr char kChannelName[] = "flutter/hdr";
 static constexpr char kSetEnabledMethod[] = "setEnabled";
 static constexpr char kGetCapabilitiesMethod[] = "getCapabilities";
 static constexpr char kEnabledKey[] = "enabled";
+static constexpr char kViewIdKey[] = "viewId";
 
 struct _FlHdrHandler {
   GObject parent_instance;
@@ -29,29 +30,25 @@ struct _FlHdrHandler {
 
 G_DEFINE_TYPE(FlHdrHandler, fl_hdr_handler, G_TYPE_OBJECT)
 
-// Gets the subsurface renderer of the implicit view, or NULL if it doesn't
-// present through one.
-static FlViewRendererSubsurface* get_renderer(FlHdrHandler* self) {
-  g_autoptr(FlRenderable) renderable =
-      fl_engine_get_renderable(self->engine, flutter::kFlutterImplicitViewId);
-  if (renderable == nullptr || !FL_IS_VIEW(renderable)) {
-    return nullptr;
+// Gets the view addressed by the optional "viewId" argument, or the implicit
+// view.
+static FlutterViewId get_view_id(FlValue* args) {
+  if (args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_MAP) {
+    FlValue* value = fl_value_lookup_string(args, kViewIdKey);
+    if (value != nullptr && fl_value_get_type(value) == FL_VALUE_TYPE_INT) {
+      return fl_value_get_int(value);
+    }
   }
-  FlViewRenderer* renderer = fl_view_get_renderer(FL_VIEW(renderable));
-  if (renderer == nullptr || !FL_IS_VIEW_RENDERER_SUBSURFACE(renderer)) {
-    return nullptr;
-  }
-  return FL_VIEW_RENDERER_SUBSURFACE(renderer);
+  return flutter::kFlutterImplicitViewId;
 }
 
-static FlValue* capabilities(FlHdrHandler* self) {
+static FlValue* capabilities(FlViewRenderer* renderer) {
   gboolean surface = FALSE;
   gboolean enabled = FALSE;
   double headroom = 1.0;
-  FlViewRendererSubsurface* renderer = get_renderer(self);
-  if (renderer != nullptr) {
-    fl_view_renderer_subsurface_get_hdr_capabilities(renderer, &surface,
-                                                     &enabled, &headroom);
+  if (FL_IS_VIEW_RENDERER_SUBSURFACE(renderer)) {
+    fl_view_renderer_subsurface_get_hdr_capabilities(
+        FL_VIEW_RENDERER_SUBSURFACE(renderer), &surface, &enabled, &headroom);
   }
 
   FlValue* caps = fl_value_new_map();
@@ -65,19 +62,34 @@ static FlValue* capabilities(FlHdrHandler* self) {
   return caps;
 }
 
-static FlMethodResponse* set_enabled(FlHdrHandler* self, FlValue* args) {
-  gboolean enabled = FALSE;
-  if (args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_MAP) {
-    FlValue* value = fl_value_lookup_string(args, kEnabledKey);
-    enabled = value != nullptr &&
-              fl_value_get_type(value) == FL_VALUE_TYPE_BOOL &&
-              fl_value_get_bool(value);
+static FlMethodResponse* handle(FlHdrHandler* self,
+                                const gchar* method,
+                                FlValue* args) {
+  g_autoptr(FlRenderable) renderable =
+      fl_engine_get_renderable(self->engine, get_view_id(args));
+  FlViewRenderer* renderer = nullptr;
+  if (renderable != nullptr && FL_IS_VIEW(renderable)) {
+    renderer = fl_view_get_renderer(FL_VIEW(renderable));
   }
-  FlViewRendererSubsurface* renderer = get_renderer(self);
-  if (renderer != nullptr) {
-    fl_view_renderer_subsurface_set_hdr_enabled(renderer, enabled);
+  if (renderer == nullptr) {
+    return FL_METHOD_RESPONSE(fl_method_error_response_new(
+        "no_view", "No view with this ID.", nullptr));
   }
-  g_autoptr(FlValue) caps = capabilities(self);
+
+  if (strcmp(method, kSetEnabledMethod) == 0 &&
+      FL_IS_VIEW_RENDERER_SUBSURFACE(renderer)) {
+    FlValue* value =
+        args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_MAP
+            ? fl_value_lookup_string(args, kEnabledKey)
+            : nullptr;
+    gboolean enabled = value != nullptr &&
+                       fl_value_get_type(value) == FL_VALUE_TYPE_BOOL &&
+                       fl_value_get_bool(value);
+    fl_view_renderer_subsurface_set_hdr_enabled(
+        FL_VIEW_RENDERER_SUBSURFACE(renderer), enabled);
+  }
+
+  g_autoptr(FlValue) caps = capabilities(renderer);
   return FL_METHOD_RESPONSE(fl_method_success_response_new(caps));
 }
 
@@ -89,11 +101,9 @@ static void method_call_cb(FlMethodChannel* channel,
   const gchar* method = fl_method_call_get_name(method_call);
 
   g_autoptr(FlMethodResponse) response = nullptr;
-  if (strcmp(method, kSetEnabledMethod) == 0) {
-    response = set_enabled(self, fl_method_call_get_args(method_call));
-  } else if (strcmp(method, kGetCapabilitiesMethod) == 0) {
-    g_autoptr(FlValue) caps = capabilities(self);
-    response = FL_METHOD_RESPONSE(fl_method_success_response_new(caps));
+  if (strcmp(method, kSetEnabledMethod) == 0 ||
+      strcmp(method, kGetCapabilitiesMethod) == 0) {
+    response = handle(self, method, fl_method_call_get_args(method_call));
   } else {
     response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
   }

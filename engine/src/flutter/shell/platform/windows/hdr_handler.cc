@@ -25,6 +25,7 @@ constexpr char kChannelName[] = "flutter/hdr";
 constexpr char kSetEnabledMethod[] = "setEnabled";
 constexpr char kGetCapabilitiesMethod[] = "getCapabilities";
 constexpr char kEnabledKey[] = "enabled";
+constexpr char kViewIdKey[] = "viewId";
 
 // scRGB defines 1.0 as 80 nits.
 constexpr double kScrgbReferenceNits = 80.0;
@@ -127,36 +128,52 @@ void HdrHandler::HandleMethodCall(
     const MethodCall<EncodableValue>& method_call,
     std::unique_ptr<MethodResult<EncodableValue>> result) {
   const std::string& method = method_call.method_name();
-  if (method == kSetEnabledMethod) {
-    const auto* arguments = std::get_if<EncodableMap>(method_call.arguments());
-    bool enabled = false;
-    if (arguments != nullptr) {
-      auto it = arguments->find(EncodableValue(std::string(kEnabledKey)));
-      if (it != arguments->end()) {
-        const bool* value = std::get_if<bool>(&it->second);
-        enabled = value != nullptr && *value;
-      }
-    }
-    enabled_ = enabled;
-    result->Success(Capabilities());
-  } else if (method == kGetCapabilitiesMethod) {
-    result->Success(Capabilities());
-  } else {
+  if (method != kSetEnabledMethod && method != kGetCapabilitiesMethod) {
     result->NotImplemented();
+    return;
   }
+
+  const auto* arguments = std::get_if<EncodableMap>(method_call.arguments());
+  auto argument = [arguments](const char* key) -> const EncodableValue* {
+    if (arguments == nullptr) {
+      return nullptr;
+    }
+    auto it = arguments->find(EncodableValue(std::string(key)));
+    return it == arguments->end() ? nullptr : &it->second;
+  };
+
+  FlutterViewId view_id = kImplicitViewId;
+  if (const EncodableValue* value = argument(kViewIdKey)) {
+    if (const int32_t* id = std::get_if<int32_t>(value)) {
+      view_id = *id;
+    } else if (const int64_t* id64 = std::get_if<int64_t>(value)) {
+      view_id = *id64;
+    }
+  }
+  FlutterWindowsView* view = engine_->view(view_id);
+  if (view == nullptr) {
+    result->Error("no_view", "No view with this ID.");
+    return;
+  }
+
+  if (method == kSetEnabledMethod) {
+    const EncodableValue* value = argument(kEnabledKey);
+    const bool* enabled = value != nullptr ? std::get_if<bool>(value) : nullptr;
+    view->SetHdrEnabled(enabled != nullptr && *enabled);
+  }
+  result->Success(Capabilities(view));
 }
 
-void HdrHandler::Refresh() {
-  Capabilities();
+void HdrHandler::Refresh(FlutterWindowsView* view) {
+  Capabilities(view);
 }
 
-EncodableValue HdrHandler::Capabilities() {
+EncodableValue HdrHandler::Capabilities(FlutterWindowsView* view) {
   const egl::Manager* manager = engine_->egl_manager();
   const bool surface = manager != nullptr && manager->is_rgba16float();
 
   HMONITOR monitor = nullptr;
-  FlutterWindowsView* view = engine_->view(kImplicitViewId);
-  if (view != nullptr && view->GetWindowHandle() != nullptr) {
+  if (view->GetWindowHandle() != nullptr) {
     monitor =
         MonitorFromWindow(view->GetWindowHandle(), MONITOR_DEFAULTTONEAREST);
   }
@@ -165,15 +182,15 @@ EncodableValue HdrHandler::Capabilities() {
   double headroom = 1.0;
   if (surface && state.hdr && state.sdr_white_nits > 0.0) {
     headroom = std::max(1.0, state.peak_nits / state.sdr_white_nits);
-    engine_->SetHdrOutputScale(
+    view->SetHdrOutputScale(
         static_cast<float>(state.sdr_white_nits / kScrgbReferenceNits));
   } else {
-    engine_->SetHdrOutputScale(1.0f);
+    view->SetHdrOutputScale(1.0f);
   }
 
   return EncodableValue(EncodableMap{
       {EncodableValue("surface"), EncodableValue(surface)},
-      {EncodableValue("enabled"), EncodableValue(enabled_)},
+      {EncodableValue("enabled"), EncodableValue(view->hdr_enabled())},
       {EncodableValue("currentHeadroom"), EncodableValue(headroom)},
       {EncodableValue("potentialHeadroom"), EncodableValue(headroom)},
       {EncodableValue("referenceHeadroom"), EncodableValue(0.0)},

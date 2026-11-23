@@ -616,8 +616,8 @@ std::unique_ptr<FlutterWindowsView> FlutterWindowsEngine::CreateView(
     views_[view_id] = view.get();
   }
 
-  if (view->IsImplicitView() && hdr_handler_) {
-    hdr_handler_->Refresh();
+  if (hdr_handler_) {
+    hdr_handler_->Refresh(view.get());
   }
 
   if (!view->IsImplicitView()) {

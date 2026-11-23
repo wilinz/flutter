@@ -92,6 +92,17 @@ class FlutterWindowsView : public WindowBindingHandlerDelegate {
   // Return the currently configured HWND.
   virtual HWND GetWindowHandle() const;
 
+  // Scale applied to linear values presented on an F16 scRGB swap chain so SDR
+  // white lands on the SDR white level of this view's monitor (scRGB fixes 1.0
+  // at 80 nits). Set on the platform thread, read on the raster thread.
+  void SetHdrOutputScale(float scale) { hdr_output_scale_.store(scale); }
+  float hdr_output_scale() const { return hdr_output_scale_.load(); }
+
+  // Whether extended range presentation was requested through flutter/hdr.
+  // Platform thread only.
+  void SetHdrEnabled(bool enabled) { hdr_enabled_ = enabled; }
+  bool hdr_enabled() const { return hdr_enabled_; }
+
   // Returns the engine backing this view.
   FlutterWindowsEngine* GetEngine() const;
 
@@ -482,6 +493,12 @@ class FlutterWindowsView : public WindowBindingHandlerDelegate {
   // Null if using software rasterization, the surface hasn't been created yet,
   // or if surface creation failed.
   std::unique_ptr<egl::WindowSurface> surface_ = nullptr;
+
+  // See |SetHdrOutputScale|.
+  std::atomic<float> hdr_output_scale_ = 1.0f;
+
+  // See |SetHdrEnabled|.
+  bool hdr_enabled_ = false;
 
   // Keeps track of pointer states in relation to the window.
   std::unordered_map<int32_t, std::unique_ptr<PointerState>> pointer_states_;

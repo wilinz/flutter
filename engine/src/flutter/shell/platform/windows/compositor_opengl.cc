@@ -260,7 +260,8 @@ bool CompositorOpenGL::Present(FlutterWindowsView* view,
   gl_->Disable(GL_SCISSOR_TEST);
 
   if (format_.pixel_type == GL_HALF_FLOAT) {
-    if (!PresentExtendedRange(source_id, width, height)) {
+    if (!PresentExtendedRange(source_id, width, height,
+                              view->hdr_output_scale())) {
       return false;
     }
     if (!surface->SwapBuffers()) {
@@ -344,7 +345,8 @@ bool CompositorOpenGL::CreatePresentProgram() {
 
 bool CompositorOpenGL::PresentExtendedRange(GLuint source_framebuffer,
                                             GLint width,
-                                            GLint height) {
+                                            GLint height,
+                                            GLfloat scale) {
   if (present_program_ == 0 && !CreatePresentProgram()) {
     return false;
   }
@@ -380,7 +382,6 @@ bool CompositorOpenGL::PresentExtendedRange(GLuint source_framebuffer,
   gl_->Viewport(0, 0, width, height);
   gl_->Disable(GL_BLEND);
   gl_->UseProgram(present_program_);
-  const GLfloat scale = engine_->hdr_output_scale();
   const GLfloat decode = enable_impeller_ ? 1.0f : 0.0f;
   gl_->Uniform1fv(present_scale_location_, 1, &scale);
   gl_->Uniform1fv(present_decode_location_, 1, &decode);
