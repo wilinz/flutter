@@ -530,7 +530,14 @@ TEST(FlutterSurfaceManager, DynamicSwitchNoOpWhenSameValue) {
   EXPECT_EQ(surfaceManager.backBufferCache.count, 1ul);
 }
 
-// Verify that backing store layers have F16 EDR properties when created.
+static BOOL LayerRequestsEDR(CALayer* layer) {
+  if (@available(macOS 26.0, *)) {
+    return [layer.preferredDynamicRange isEqualToString:CADynamicRangeHigh];
+  }
+  return layer.wantsExtendedDynamicRangeContent;
+}
+
+// Half-float layers stay SDR until EDR is requested, and follow the request.
 TEST(FlutterSurfaceManager, BackingStoreLayersHaveF16EDRProperties) {
   TestView* testView = [[TestView alloc] init];
   FlutterSurfaceManager* surfaceManager = CreateSurfaceManager(testView, /*enableWideGamut=*/YES);
@@ -540,8 +547,15 @@ TEST(FlutterSurfaceManager, BackingStoreLayersHaveF16EDRProperties) {
 
   ASSERT_EQ(testView.layer.sublayers.count, 1ul);
   CALayer* backingStoreLayer = testView.layer.sublayers[0];
-  EXPECT_TRUE(backingStoreLayer.wantsExtendedDynamicRangeContent);
   EXPECT_TRUE([backingStoreLayer.contentsFormat isEqualToString:kCAContentsFormatRGBA16Float]);
+  EXPECT_FALSE(LayerRequestsEDR(backingStoreLayer));
+
+  surfaceManager.extendedDynamicRange = YES;
+  EXPECT_TRUE(LayerRequestsEDR(backingStoreLayer));
+  EXPECT_TRUE(backingStoreLayer.contents != nil);
+
+  surfaceManager.extendedDynamicRange = NO;
+  EXPECT_FALSE(LayerRequestsEDR(backingStoreLayer));
 }
 
 // Verify that 8-bit surfaces keep standard dynamic range layers.
@@ -554,7 +568,8 @@ TEST(FlutterSurfaceManager, BackingStoreLayersStaySDRWithoutWideGamut) {
 
   ASSERT_EQ(testView.layer.sublayers.count, 1ul);
   CALayer* backingStoreLayer = testView.layer.sublayers[0];
-  EXPECT_FALSE(backingStoreLayer.wantsExtendedDynamicRangeContent);
+  surfaceManager.extendedDynamicRange = YES;
+  EXPECT_FALSE(LayerRequestsEDR(backingStoreLayer));
   EXPECT_TRUE([backingStoreLayer.contentsFormat isEqualToString:kCAContentsFormatRGBA8Uint]);
 }
 

@@ -476,6 +476,9 @@ static void OnPlatformMessage(const FlutterPlatformMessage* message, void* user_
   // A method channel for taking screenshots via the rasterizer.
   FlutterMethodChannel* _screenshotChannel;
 
+  // Channel for opting views into extended dynamic range presentation.
+  FlutterMethodChannel* _hdrChannel;
+
   // Whether the application is currently the active application.
   BOOL _active;
 
@@ -1457,6 +1460,13 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
     [weakSelf handleMethodCall:call result:result];
   }];
 
+  _hdrChannel = [FlutterMethodChannel methodChannelWithName:@"flutter/hdr"
+                                           binaryMessenger:self.binaryMessenger
+                                                     codec:[FlutterStandardMethodCodec sharedInstance]];
+  [_hdrChannel setMethodCallHandler:^(FlutterMethodCall* call, FlutterResult result) {
+    [weakSelf handleHdrMethodCall:call result:result];
+  }];
+
   _screenshotChannel =
       [FlutterMethodChannel methodChannelWithName:@"flutter/screenshot"
                                   binaryMessenger:self.binaryMessenger
@@ -1532,6 +1542,34 @@ static void SetThreadPriority(FlutterThreadPriority priority) {
       [FlutterStandardTypedData typedDataWithBytes:packedData],
     ]);
   }];
+}
+
+// Handles flutter/hdr. Arguments are an optional map with "viewId"; the
+// implicit view is used when it is absent.
+- (void)handleHdrMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
+  NSDictionary* args = [call.arguments isKindOfClass:[NSDictionary class]] ? call.arguments : @{};
+  NSNumber* viewId = args[@"viewId"];
+  FlutterViewController* viewController = [self
+      viewControllerForIdentifier:viewId ? viewId.longLongValue : flutter::kFlutterImplicitViewId];
+  FlutterSurfaceManager* surfaceManager = viewController.flutterView.surfaceManager;
+  if (!surfaceManager) {
+    result([FlutterError errorWithCode:@"no_view" message:@"No such view." details:nil]);
+    return;
+  }
+  if ([call.method isEqualToString:@"setEnabled"]) {
+    surfaceManager.extendedDynamicRange = [args[@"enabled"] boolValue];
+  } else if (![call.method isEqualToString:@"getCapabilities"]) {
+    result(FlutterMethodNotImplemented);
+    return;
+  }
+  NSScreen* screen = viewController.flutterView.window.screen ?: NSScreen.mainScreen;
+  result(@{
+    @"surface" : @(surfaceManager.wideGamut),
+    @"enabled" : @(surfaceManager.extendedDynamicRange),
+    @"currentHeadroom" : @(screen.maximumExtendedDynamicRangeColorComponentValue),
+    @"potentialHeadroom" : @(screen.maximumPotentialExtendedDynamicRangeColorComponentValue),
+    @"referenceHeadroom" : @(screen.maximumReferenceExtendedDynamicRangeColorComponentValue),
+  });
 }
 
 - (void)didUpdateMouseCursor:(NSCursor*)cursor {

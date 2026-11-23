@@ -20,6 +20,7 @@
   CALayer* _containingLayer;
   __weak id<FlutterSurfaceManagerDelegate> _delegate;
   BOOL _wideGamut;
+  BOOL _extendedDynamicRange;
 
   // Available (cached) back buffer surfaces. These will be cleared during
   // present and replaced by current frong surfaces.
@@ -61,9 +62,15 @@ static NSColor* GetBorderColorForLayer(int layer) {
 
 /// Creates sublayers for given layer, each one displaying a portion of the
 /// of the surface determined by a rectangle in the provided paint region.
-static void SetExtendedRange(CALayer* layer, BOOL extended) {
-  layer.wantsExtendedDynamicRangeContent = extended;
-  layer.contentsFormat = extended ? kCAContentsFormatRGBA16Float : kCAContentsFormatRGBA8Uint;
+// Half-float surfaces use a half-float contents format; EDR is only requested
+// when the application opts in, since it raises display power use.
+static void SetExtendedRange(CALayer* layer, BOOL halfFloat, BOOL edr) {
+  layer.contentsFormat = halfFloat ? kCAContentsFormatRGBA16Float : kCAContentsFormatRGBA8Uint;
+  if (@available(macOS 26.0, *)) {
+    layer.preferredDynamicRange = edr ? CADynamicRangeHigh : CADynamicRangeStandard;
+  } else if (@available(macOS 14.0, *)) {
+    layer.wantsExtendedDynamicRangeContent = edr;
+  }
 }
 
 static void UpdateContentSubLayers(CALayer* layer,
@@ -72,7 +79,8 @@ static void UpdateContentSubLayers(CALayer* layer,
                                    CGSize surfaceSize,
                                    NSColor* borderColor,
                                    const std::vector<FlutterRect>& paintRegion,
-                                   BOOL extendedRange) {
+                                   BOOL halfFloat,
+                                   BOOL edr) {
   // Adjust sublayer count to paintRegion count.
   while (layer.sublayers.count > paintRegion.size()) {
     [layer.sublayers.lastObject removeFromSuperlayer];
@@ -80,7 +88,7 @@ static void UpdateContentSubLayers(CALayer* layer,
 
   while (layer.sublayers.count < paintRegion.size()) {
     CALayer* newLayer = [CALayer layer];
-    SetExtendedRange(newLayer, extendedRange);
+    SetExtendedRange(newLayer, halfFloat, edr);
     [layer addSublayer:newLayer];
   }
 
@@ -103,7 +111,7 @@ static void UpdateContentSubLayers(CALayer* layer,
       subLayer.borderWidth = 1.0;
     }
 
-    SetExtendedRange(subLayer, extendedRange);
+    SetExtendedRange(subLayer, halfFloat, edr);
     subLayer.contents = (__bridge id)surface;
   }
 }
@@ -126,6 +134,39 @@ static void UpdateContentSubLayers(CALayer* layer,
     _layers = [NSMutableArray array];
   }
   return self;
+}
+
+- (BOOL)wideGamut {
+  return _wideGamut;
+}
+
+- (BOOL)extendedDynamicRange {
+  return _extendedDynamicRange;
+}
+
+- (void)setExtendedDynamicRange:(BOOL)enabled {
+  FML_DCHECK([NSThread isMainThread]);
+  if (_extendedDynamicRange == enabled) {
+    return;
+  }
+  _extendedDynamicRange = enabled;
+  // Core Animation re-evaluates EDR only when contents are committed, so
+  // re-assign the current surfaces after updating the flags.
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  for (NSUInteger i = 0; i < _layers.count; ++i) {
+    CALayer* layer = _layers[i];
+    BOOL halfFloat = i < _frontSurfaces.count ? _frontSurfaces[i].isWideGamut : _wideGamut;
+    BOOL edr = halfFloat && enabled;
+    NSArray<CALayer*>* targets = [@[ layer ] arrayByAddingObjectsFromArray:layer.sublayers ?: @[]];
+    for (CALayer* target in targets) {
+      SetExtendedRange(target, halfFloat, edr);
+      id contents = target.contents;
+      target.contents = nil;
+      target.contents = contents;
+    }
+  }
+  [CATransaction commit];
 }
 
 - (void)setEnableWideGamut:(BOOL)enableWideGamut {
@@ -202,7 +243,7 @@ static void UpdateContentSubLayers(CALayer* layer,
     CALayer* layer = [CALayer layer];
     // Core Animation only honours EDR on contents committed after the flag is
     // set, so configure the layer before it receives any surface.
-    SetExtendedRange(layer, _wideGamut);
+    SetExtendedRange(layer, _wideGamut, _wideGamut && _extendedDynamicRange);
     [_containingLayer addSublayer:layer];
     [_layers addObject:layer];
   }
@@ -216,7 +257,9 @@ static void UpdateContentSubLayers(CALayer* layer,
     CGFloat scale = _containingLayer.contentsScale;
     // Half-float (wide-gamut) surfaces carry EDR values above 1.0; set the
     // flags before assigning contents.
-    SetExtendedRange(layer, info.surface.isWideGamut);
+    BOOL halfFloat = info.surface.isWideGamut;
+    BOOL edr = halfFloat && _extendedDynamicRange;
+    SetExtendedRange(layer, halfFloat, edr);
     if (i == 0) {
       layer.frame = CGRectMake(info.offset.x / scale, info.offset.y / scale,
                                info.surface.size.width / scale, info.surface.size.height / scale);
@@ -225,8 +268,7 @@ static void UpdateContentSubLayers(CALayer* layer,
       layer.frame = CGRectZero;
       NSColor* borderColor = enableSurfaceDebugInfo ? GetBorderColorForLayer(i - 1) : nil;
       UpdateContentSubLayers(layer, info.surface.ioSurface, scale, info.surface.size, borderColor,
-                             info.paintRegion,
-                             info.surface.isWideGamut);
+                             info.paintRegion, halfFloat, edr);
     }
     layer.zPosition = info.zIndex;
   }
