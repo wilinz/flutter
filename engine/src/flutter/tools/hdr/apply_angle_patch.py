@@ -2,6 +2,7 @@
 # Copyright 2013 The Flutter Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
 """Applies the D3D11 scRGB swap chain patch to third_party/angle.
 
 The patch lets ANGLE honor EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT on D3D11 by
@@ -19,8 +20,10 @@ ANGLE = os.path.normpath(os.path.join(HERE, '..', '..', 'third_party', 'angle'))
 
 
 def git_apply(*args):
-  return subprocess.run(['git', 'apply', *args, PATCH], cwd=ANGLE,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+  return subprocess.run(['git', 'apply', *args, PATCH],
+                        cwd=ANGLE,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL).returncode == 0
 
 
 def main():

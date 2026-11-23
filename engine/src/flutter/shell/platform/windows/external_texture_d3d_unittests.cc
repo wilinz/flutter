@@ -58,18 +58,16 @@ class FakeD3D11Texture2D : public ID3D11Texture2D {
   void STDMETHODCALLTYPE GetDevice(ID3D11Device** ppDevice) override {
     *ppDevice = nullptr;
   }
-  HRESULT STDMETHODCALLTYPE GetPrivateData(REFGUID,
-                                            UINT*,
-                                            void*) override {
+  HRESULT STDMETHODCALLTYPE GetPrivateData(REFGUID, UINT*, void*) override {
     return E_FAIL;
   }
   HRESULT STDMETHODCALLTYPE SetPrivateData(REFGUID,
-                                            UINT,
-                                            const void*) override {
+                                           UINT,
+                                           const void*) override {
     return S_OK;
   }
-  HRESULT STDMETHODCALLTYPE
-  SetPrivateDataInterface(REFGUID, const IUnknown*) override {
+  HRESULT STDMETHODCALLTYPE SetPrivateDataInterface(REFGUID,
+                                                    const IUnknown*) override {
     return S_OK;
   }
 
@@ -117,8 +115,15 @@ class StubProcTable : public flutter::egl::ProcTable {
   void DeleteTextures(GLsizei, const GLuint*) const override {}
   void BindTexture(GLenum, GLuint) const override {}
   void TexParameteri(GLenum, GLenum, GLint) const override {}
-  void TexImage2D(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum,
-                  GLenum, const void*) const override {}
+  void TexImage2D(GLenum,
+                  GLint,
+                  GLint,
+                  GLsizei,
+                  GLsizei,
+                  GLint,
+                  GLenum,
+                  GLenum,
+                  const void*) const override {}
 };
 
 // Each test uses this descriptor + a static callback to drive
@@ -129,8 +134,8 @@ struct CallbackContext {
 };
 
 const FlutterDesktopGpuSurfaceDescriptor* SurfaceCallback(size_t,
-                                                            size_t,
-                                                            void* user_data) {
+                                                          size_t,
+                                                          void* user_data) {
   if (user_data == nullptr) {
     return nullptr;
   }
@@ -181,8 +186,7 @@ TEST(ExternalTextureD3dTest, D3D11Texture2DFP16RoutesDirectPointerWithFp16) {
   EXPECT_CALL(mock_manager, CreateSurfaceFromHandle)
       .WillOnce(DoAll(SaveArg<0>(&captured_handle_type),
                       SaveArg<1>(&captured_buffer),
-                      SaveArg<3>(&captured_is_fp16),
-                      Return(EGL_NO_SURFACE)));
+                      SaveArg<3>(&captured_is_fp16), Return(EGL_NO_SURFACE)));
 
   auto gl = std::make_shared<StubProcTable>();
   ExternalTextureD3d external_texture(
@@ -194,8 +198,7 @@ TEST(ExternalTextureD3dTest, D3D11Texture2DFP16RoutesDirectPointerWithFp16) {
   // intentional, so we never invoke the eglBindTexImage extern.
   EXPECT_FALSE(external_texture.PopulateTexture(64, 64, &opengl_texture));
 
-  EXPECT_EQ(captured_handle_type,
-            static_cast<EGLenum>(EGL_D3D_TEXTURE_ANGLE));
+  EXPECT_EQ(captured_handle_type, static_cast<EGLenum>(EGL_D3D_TEXTURE_ANGLE));
   EXPECT_EQ(captured_buffer, static_cast<EGLClientBuffer>(&fake_texture));
   EXPECT_TRUE(captured_is_fp16);
 }
@@ -219,8 +222,7 @@ TEST(ExternalTextureD3dTest, D3D11Texture2DSDRRoutesDirectPointerNoFp16) {
   bool captured_is_fp16 = true;  // start true; expect mock to leave false
   EXPECT_CALL(mock_manager, CreateSurfaceFromHandle)
       .WillOnce(DoAll(SaveArg<0>(&captured_handle_type),
-                      SaveArg<3>(&captured_is_fp16),
-                      Return(EGL_NO_SURFACE)));
+                      SaveArg<3>(&captured_is_fp16), Return(EGL_NO_SURFACE)));
 
   auto gl = std::make_shared<StubProcTable>();
   ExternalTextureD3d external_texture(
@@ -230,8 +232,7 @@ TEST(ExternalTextureD3dTest, D3D11Texture2DSDRRoutesDirectPointerNoFp16) {
   FlutterOpenGLTexture opengl_texture = {};
   EXPECT_FALSE(external_texture.PopulateTexture(64, 64, &opengl_texture));
 
-  EXPECT_EQ(captured_handle_type,
-            static_cast<EGLenum>(EGL_D3D_TEXTURE_ANGLE));
+  EXPECT_EQ(captured_handle_type, static_cast<EGLenum>(EGL_D3D_TEXTURE_ANGLE));
   EXPECT_FALSE(captured_is_fp16);
 }
 
@@ -265,8 +266,7 @@ TEST(ExternalTextureD3dTest, DxgiSharedHandleNoAngleDeviceUsesShareHandlePath) {
   EXPECT_CALL(mock_manager, CreateSurfaceFromHandle)
       .WillOnce(DoAll(SaveArg<0>(&captured_handle_type),
                       SaveArg<1>(&captured_buffer),
-                      SaveArg<3>(&captured_is_fp16),
-                      Return(EGL_NO_SURFACE)));
+                      SaveArg<3>(&captured_is_fp16), Return(EGL_NO_SURFACE)));
 
   auto gl = std::make_shared<StubProcTable>();
   ExternalTextureD3d external_texture(

@@ -480,8 +480,7 @@ TEST_F(CompositorOpenGLTest, NoSurfaceIgnored) {
 TEST_F(CompositorOpenGLTest, CreateBackingStoreF16) {
   UseHeadlessEngine();
 
-  EXPECT_CALL(*egl_manager(), is_rgba16float)
-      .WillRepeatedly(Return(true));
+  EXPECT_CALL(*egl_manager(), is_rgba16float).WillRepeatedly(Return(true));
 
   auto compositor =
       CompositorOpenGL{engine(), kMockResolver, /*enable_impeller=*/false};
@@ -569,8 +568,7 @@ TEST_F(CompositorOpenGLTest, CreateBackingStoreRGBA8Fallback) {
 TEST_F(CompositorOpenGLTest, CreateBackingStoreF16TexImage2DArgs) {
   UseHeadlessEngine();
 
-  EXPECT_CALL(*egl_manager(), is_rgba16float)
-      .WillRepeatedly(Return(true));
+  EXPECT_CALL(*egl_manager(), is_rgba16float).WillRepeatedly(Return(true));
 
   // Static state because the resolver returns a plain function pointer.
   // Reset at test entry to avoid bleed across runs in the same binary.
@@ -582,8 +580,8 @@ TEST_F(CompositorOpenGLTest, CreateBackingStoreF16TexImage2DArgs) {
   captured_type = 0;
 
   auto MockTexImage2D = +[](GLenum target, GLint level, GLint internal_format,
-                             GLsizei width, GLsizei height, GLint border,
-                             GLenum format, GLenum type, const void* pixels) {
+                            GLsizei width, GLsizei height, GLint border,
+                            GLenum format, GLenum type, const void* pixels) {
     captured_internal_format = static_cast<GLenum>(internal_format);
     captured_format = format;
     captured_type = type;
