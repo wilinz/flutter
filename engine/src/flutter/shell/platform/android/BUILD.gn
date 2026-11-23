@@ -254,6 +254,7 @@ android_java_sources = [
   "io/flutter/embedding/android/FlutterSurfaceView.java",
   "io/flutter/embedding/android/FlutterTextureView.java",
   "io/flutter/embedding/android/FlutterView.java",
+  "io/flutter/embedding/android/HdrPresentation.java",
   "io/flutter/embedding/android/FlutterViewDelegate.java",
   "io/flutter/embedding/android/IntentUtils.java",
   "io/flutter/embedding/android/KeyChannelResponder.java",

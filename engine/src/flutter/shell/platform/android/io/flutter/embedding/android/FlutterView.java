@@ -132,6 +132,7 @@ public class FlutterView extends FrameLayout
 
   // Connections to a Flutter execution context.
   @Nullable private FlutterEngine flutterEngine;
+  @Nullable private HdrPresentation hdrPresentation;
 
   @NonNull
   private final Set<FlutterEngineAttachmentListener> flutterEngineAttachmentListeners =
@@ -1271,6 +1272,8 @@ public class FlutterView extends FrameLayout
 
     sendViewportMetricsToFlutter();
 
+    hdrPresentation = new HdrPresentation(this, flutterEngine);
+
     flutterEngine.getPlatformViewsController().attachToView(this);
     flutterEngine.getPlatformViewsController2().attachToView(this);
 
@@ -1311,6 +1314,11 @@ public class FlutterView extends FrameLayout
     }
 
     getContext().getContentResolver().unregisterContentObserver(systemSettingsObserver);
+
+    if (hdrPresentation != null) {
+      hdrPresentation.dispose();
+      hdrPresentation = null;
+    }
 
     flutterEngine.getPlatformViewsController().detachFromView();
     flutterEngine.getPlatformViewsController2().detachFromView();
