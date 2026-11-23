@@ -38,7 +38,8 @@ FlFramebuffer* fl_framebuffer_new(GLint format,
 
 /**
  * fl_framebuffer_new_multisample:
- * @format: texture format, e.g. GL_RGBA, GL_BGRA_EXT.
+ * @format: texture format, e.g. GL_RGBA, GL_BGRA_EXT, or GL_RGBA16F for a
+ * half float texture.
  * @width: width of framebuffer in pixels.
  * @height: height of framebuffer in pixels.
  * @use_msaa: %TRUE to enable multisample anti-aliasing (MSAA) attachments.

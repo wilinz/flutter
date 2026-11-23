@@ -189,6 +189,7 @@ source_set("flutter_linux_sources") {
     "fl_wayland_display.cc",
     "fl_window_monitor.cc",
     "fl_window_state_monitor.cc",
+    "protocols/color-management-v1-protocol.c",
   ]
 
   # Set flag to stop headers being directly included (library users should not

@@ -6,42 +6,93 @@
 
 #include <cstring>
 
+#include "flutter/common/constants.h"
+#include "flutter/shell/platform/linux/fl_engine_private.h"
+#include "flutter/shell/platform/linux/fl_view_private.h"
+#include "flutter/shell/platform/linux/fl_view_renderer_subsurface.h"
 #include "flutter/shell/platform/linux/public/flutter_linux/fl_method_channel.h"
 #include "flutter/shell/platform/linux/public/flutter_linux/fl_standard_method_codec.h"
 
 static constexpr char kChannelName[] = "flutter/hdr";
 static constexpr char kSetEnabledMethod[] = "setEnabled";
 static constexpr char kGetCapabilitiesMethod[] = "getCapabilities";
+static constexpr char kEnabledKey[] = "enabled";
 
 struct _FlHdrHandler {
   GObject parent_instance;
+
+  // Engine the handler belongs to, not referenced.
+  FlEngine* engine;
 
   FlMethodChannel* channel;
 };
 
 G_DEFINE_TYPE(FlHdrHandler, fl_hdr_handler, G_TYPE_OBJECT)
 
-// SDR-only capabilities: no extended range surface and no headroom.
-static FlValue* sdr_capabilities() {
+// Gets the subsurface renderer of the implicit view, or NULL if it doesn't
+// present through one.
+static FlViewRendererSubsurface* get_renderer(FlHdrHandler* self) {
+  g_autoptr(FlRenderable) renderable =
+      fl_engine_get_renderable(self->engine, flutter::kFlutterImplicitViewId);
+  if (renderable == nullptr || !FL_IS_VIEW(renderable)) {
+    return nullptr;
+  }
+  FlViewRenderer* renderer = fl_view_get_renderer(FL_VIEW(renderable));
+  if (renderer == nullptr || !FL_IS_VIEW_RENDERER_SUBSURFACE(renderer)) {
+    return nullptr;
+  }
+  return FL_VIEW_RENDERER_SUBSURFACE(renderer);
+}
+
+static FlValue* capabilities(FlHdrHandler* self) {
+  gboolean surface = FALSE;
+  gboolean enabled = FALSE;
+  double headroom = 1.0;
+  FlViewRendererSubsurface* renderer = get_renderer(self);
+  if (renderer != nullptr) {
+    fl_view_renderer_subsurface_get_hdr_capabilities(renderer, &surface,
+                                                     &enabled, &headroom);
+  }
+
   FlValue* caps = fl_value_new_map();
-  fl_value_set_string_take(caps, "surface", fl_value_new_bool(FALSE));
-  fl_value_set_string_take(caps, "enabled", fl_value_new_bool(FALSE));
-  fl_value_set_string_take(caps, "currentHeadroom", fl_value_new_float(1.0));
-  fl_value_set_string_take(caps, "potentialHeadroom", fl_value_new_float(1.0));
+  fl_value_set_string_take(caps, "surface", fl_value_new_bool(surface));
+  fl_value_set_string_take(caps, "enabled", fl_value_new_bool(enabled));
+  fl_value_set_string_take(caps, "currentHeadroom",
+                           fl_value_new_float(headroom));
+  fl_value_set_string_take(caps, "potentialHeadroom",
+                           fl_value_new_float(headroom));
   fl_value_set_string_take(caps, "referenceHeadroom", fl_value_new_float(0.0));
   return caps;
+}
+
+static FlMethodResponse* set_enabled(FlHdrHandler* self, FlValue* args) {
+  gboolean enabled = FALSE;
+  if (args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_MAP) {
+    FlValue* value = fl_value_lookup_string(args, kEnabledKey);
+    enabled = value != nullptr &&
+              fl_value_get_type(value) == FL_VALUE_TYPE_BOOL &&
+              fl_value_get_bool(value);
+  }
+  FlViewRendererSubsurface* renderer = get_renderer(self);
+  if (renderer != nullptr) {
+    fl_view_renderer_subsurface_set_hdr_enabled(renderer, enabled);
+  }
+  g_autoptr(FlValue) caps = capabilities(self);
+  return FL_METHOD_RESPONSE(fl_method_success_response_new(caps));
 }
 
 // Called when a method call is received from Flutter.
 static void method_call_cb(FlMethodChannel* channel,
                            FlMethodCall* method_call,
                            gpointer user_data) {
+  FlHdrHandler* self = FL_HDR_HANDLER(user_data);
   const gchar* method = fl_method_call_get_name(method_call);
 
   g_autoptr(FlMethodResponse) response = nullptr;
-  if (strcmp(method, kSetEnabledMethod) == 0 ||
-      strcmp(method, kGetCapabilitiesMethod) == 0) {
-    g_autoptr(FlValue) caps = sdr_capabilities();
+  if (strcmp(method, kSetEnabledMethod) == 0) {
+    response = set_enabled(self, fl_method_call_get_args(method_call));
+  } else if (strcmp(method, kGetCapabilitiesMethod) == 0) {
+    g_autoptr(FlValue) caps = capabilities(self);
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(caps));
   } else {
     response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
@@ -67,15 +118,16 @@ static void fl_hdr_handler_class_init(FlHdrHandlerClass* klass) {
 
 static void fl_hdr_handler_init(FlHdrHandler* self) {}
 
-FlHdrHandler* fl_hdr_handler_new(FlBinaryMessenger* messenger) {
-  g_return_val_if_fail(FL_IS_BINARY_MESSENGER(messenger), nullptr);
+FlHdrHandler* fl_hdr_handler_new(FlEngine* engine) {
+  g_return_val_if_fail(FL_IS_ENGINE(engine), nullptr);
 
   FlHdrHandler* self =
       FL_HDR_HANDLER(g_object_new(fl_hdr_handler_get_type(), nullptr));
+  self->engine = engine;
 
   g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
-  self->channel =
-      fl_method_channel_new(messenger, kChannelName, FL_METHOD_CODEC(codec));
+  self->channel = fl_method_channel_new(fl_engine_get_binary_messenger(engine),
+                                        kChannelName, FL_METHOD_CODEC(codec));
   fl_method_channel_set_method_call_handler(self->channel, method_call_cb, self,
                                             nullptr);
 

@@ -32,6 +32,26 @@ static const char* fragment_shader_src =
     "  gl_FragColor = texture2D(texture, texcoord);\n"
     "}\n";
 
+// Fragment shader that decodes extended sRGB (gamma encoded, mirrored for
+// negative values) to linear sRGB.
+static const char* decode_srgb_fragment_shader_src =
+    "#ifdef GL_FRAGMENT_PRECISION_HIGH\n"
+    "precision highp float;\n"
+    "#elif defined(GL_ES)\n"
+    "precision mediump float;\n"
+    "#endif\n"
+    "\n"
+    "uniform sampler2D texture;\n"
+    "varying vec2 texcoord;\n"
+    "\n"
+    "void main() {\n"
+    "  vec4 color = texture2D(texture, texcoord);\n"
+    "  vec3 a = abs(color.rgb);\n"
+    "  vec3 decoded = mix(a / 12.92, pow((a + 0.055) / 1.055, vec3(2.4)),\n"
+    "                     step(0.04045, a));\n"
+    "  gl_FragColor = vec4(sign(color.rgb) * decoded, color.a);\n"
+    "}\n";
+
 struct _FlCompositorOpenGLShader {
   GObject parent_instance;
 
@@ -81,7 +101,8 @@ static gchar* get_program_log(GLuint program) {
   return log;
 }
 
-static void setup_shader(FlCompositorOpenGLShader* self) {
+static void setup_shader(FlCompositorOpenGLShader* self,
+                         const char* fragment_src) {
   if (!fl_opengl_manager_make_platform_current(self->opengl_manager)) {
     g_warning(
         "Failed to setup compositor shaders, unable to make OpenGL context "
@@ -100,7 +121,7 @@ static void setup_shader(FlCompositorOpenGLShader* self) {
   }
 
   GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fragment_shader, 1, &fragment_shader_src, nullptr);
+  glShaderSource(fragment_shader, 1, &fragment_src, nullptr);
   glCompileShader(fragment_shader);
   GLint fragment_compile_status;
   glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &fragment_compile_status);
@@ -181,7 +202,21 @@ FlCompositorOpenGLShader* fl_compositor_opengl_shader_new(
 
   self->opengl_manager = FL_OPENGL_MANAGER(g_object_ref(opengl_manager));
 
-  setup_shader(self);
+  setup_shader(self, fragment_shader_src);
+
+  return self;
+}
+
+FlCompositorOpenGLShader* fl_compositor_opengl_shader_new_decoding_srgb(
+    FlOpenGLManager* opengl_manager) {
+  g_return_val_if_fail(FL_IS_OPENGL_MANAGER(opengl_manager), nullptr);
+
+  FlCompositorOpenGLShader* self = FL_COMPOSITOR_OPENGL_SHADER(
+      g_object_new(fl_compositor_opengl_shader_get_type(), nullptr));
+
+  self->opengl_manager = FL_OPENGL_MANAGER(g_object_ref(opengl_manager));
+
+  setup_shader(self, decode_srgb_fragment_shader_src);
 
   return self;
 }

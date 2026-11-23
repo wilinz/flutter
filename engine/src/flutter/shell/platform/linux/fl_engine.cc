@@ -78,8 +78,11 @@ struct _FlEngine {
   // Implements the flutter/mousecursor channel.
   FlMouseCursorHandler* mouse_cursor_handler;
 
-  // Answers flutter/hdr; Linux presents SDR only.
+  // Answers flutter/hdr.
   FlHdrHandler* hdr_handler;
+
+  // TRUE if the engine was started with Impeller.
+  gboolean impeller_enabled;
 
   // Manages textures rendered by native code.
   FlTextureRegistrar* texture_registrar;
@@ -293,7 +296,14 @@ static bool create_opengl_backing_store(
 
   GLint general_format = GL_RGBA;
   GLint sized_format = GL_RGBA8;
-  if (epoxy_has_gl_extension("GL_EXT_texture_format_BGRA8888")) {
+  g_autoptr(FlRenderable) renderable =
+      fl_engine_get_renderable(self, config->view_id);
+  // Half float frames carry values above SDR white for views that can show
+  // them.
+  if (renderable != nullptr && fl_renderable_is_extended_range(renderable)) {
+    general_format = GL_RGBA16F;
+    sized_format = GL_RGBA16F;
+  } else if (epoxy_has_gl_extension("GL_EXT_texture_format_BGRA8888")) {
     general_format = GL_BGRA_EXT;
     sized_format = GL_BGRA8_EXT;
   }
@@ -723,7 +733,7 @@ static FlEngine* fl_engine_new_full(FlDartProject* project,
   self->keyboard_manager = fl_keyboard_manager_new(self);
   self->mouse_cursor_handler =
       fl_mouse_cursor_handler_new(self->binary_messenger);
-  self->hdr_handler = fl_hdr_handler_new(self->binary_messenger);
+  self->hdr_handler = fl_hdr_handler_new(self);
   self->accessibility_handler = fl_accessibility_handler_new(self);
 
   return self;
@@ -752,6 +762,11 @@ G_MODULE_EXPORT FlEngine* fl_engine_new_headless(FlDartProject* project) {
 FlutterRendererType fl_engine_get_renderer_type(FlEngine* self) {
   g_return_val_if_fail(FL_IS_ENGINE(self), static_cast<FlutterRendererType>(0));
   return self->renderer_type;
+}
+
+gboolean fl_engine_get_enable_impeller(FlEngine* self) {
+  g_return_val_if_fail(FL_IS_ENGINE(self), FALSE);
+  return self->impeller_enabled;
 }
 
 FlOpenGLManager* fl_engine_get_opengl_manager(FlEngine* self) {
@@ -845,6 +860,7 @@ gboolean fl_engine_start(FlEngine* self, GError** error) {
   // Linux (and other desktop platforms) always uses SDFs.
   g_ptr_array_add(command_line_args, g_strdup("--impeller-use-sdfs"));
 
+  self->impeller_enabled = enable_impeller;
   if (enable_impeller && !has_enable_impeller) {
     g_ptr_array_add(command_line_args, g_strdup("--enable-impeller"));
   }

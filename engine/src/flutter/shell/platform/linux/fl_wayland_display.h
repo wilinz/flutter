@@ -68,6 +68,18 @@ FlSubsurface* fl_wayland_display_create_subsurface(
     FlWaylandDisplay* display,
     struct wl_surface* parent_surface);
 
+/**
+ * fl_wayland_display_supports_extended_range:
+ * @display: an #FlWaylandDisplay.
+ *
+ * Checks if the compositor can present extended linear sRGB content through
+ * wp_color_manager_v1 (parametric image descriptions with the ext_linear
+ * transfer function and sRGB primaries).
+ *
+ * Returns: %TRUE if subsurfaces can present extended range content.
+ */
+gboolean fl_wayland_display_supports_extended_range(FlWaylandDisplay* display);
+
 G_END_DECLS
 
 #endif  // FLUTTER_SHELL_PLATFORM_LINUX_FL_WAYLAND_DISPLAY_H_

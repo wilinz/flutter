@@ -15,3 +15,10 @@ void fl_renderable_present_layers(FlRenderable* self,
 
   FL_RENDERABLE_GET_IFACE(self)->present_layers(self, layers, layers_count);
 }
+
+gboolean fl_renderable_is_extended_range(FlRenderable* self) {
+  g_return_val_if_fail(FL_IS_RENDERABLE(self), FALSE);
+
+  FlRenderableInterface* iface = FL_RENDERABLE_GET_IFACE(self);
+  return iface->is_extended_range != nullptr && iface->is_extended_range(self);
+}

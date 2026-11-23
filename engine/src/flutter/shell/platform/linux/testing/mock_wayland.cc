@@ -192,6 +192,27 @@ uint32_t wl_proxy_get_version(struct wl_proxy* proxy) {
   return reinterpret_cast<MockProxy*>(proxy)->version;
 }
 
+// Event queues and proxy wrappers are only used for color management, which
+// the mock compositor doesn't advertise.
+struct wl_event_queue* wl_display_create_queue(struct wl_display* display) {
+  return nullptr;
+}
+
+void wl_event_queue_destroy(struct wl_event_queue* queue) {}
+
+void* wl_proxy_create_wrapper(void* proxy) {
+  return nullptr;
+}
+
+void wl_proxy_wrapper_destroy(void* proxy_wrapper) {}
+
+void wl_proxy_set_queue(struct wl_proxy* proxy, struct wl_event_queue* queue) {}
+
+int wl_display_dispatch_queue(struct wl_display* display,
+                              struct wl_event_queue* queue) {
+  return -1;
+}
+
 int wl_display_roundtrip(struct wl_display* display) {
   if (pending_registries == nullptr) {
     return 0;

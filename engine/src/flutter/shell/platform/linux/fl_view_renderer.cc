@@ -87,6 +87,13 @@ void fl_view_renderer_paint_background(FlViewRenderer* self, cairo_t* cr) {
   cairo_paint(cr);
 }
 
+gboolean fl_view_renderer_is_extended_range(FlViewRenderer* self) {
+  g_return_val_if_fail(FL_IS_VIEW_RENDERER(self), FALSE);
+
+  FlViewRendererClass* klass = FL_VIEW_RENDERER_GET_CLASS(self);
+  return klass->is_extended_range != nullptr && klass->is_extended_range(self);
+}
+
 void fl_view_renderer_present_layers(FlViewRenderer* self,
                                      const FlutterLayer** layers,
                                      size_t layers_count) {

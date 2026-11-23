@@ -37,6 +37,19 @@ FlCompositorOpenGLShader* fl_compositor_opengl_shader_new(
     FlOpenGLManager* opengl_manager);
 
 /**
+ * fl_compositor_opengl_shader_new_decoding_srgb:
+ * @opengl_manager: an #FlOpenGLManager.
+ *
+ * Creates a shader program that draws a texture holding extended sRGB (gamma
+ * encoded) values as linear sRGB values. Requires a valid OpenGL context to
+ * create.
+ *
+ * Returns: a new #FlCompositorOpenGLShader.
+ */
+FlCompositorOpenGLShader* fl_compositor_opengl_shader_new_decoding_srgb(
+    FlOpenGLManager* opengl_manager);
+
+/**
  * fl_compositor_opengl_shader_use:
  * @shader: an #FlCompositorOpenGLShader.
  *

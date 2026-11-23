@@ -82,6 +82,16 @@ FlutterRendererType fl_engine_get_renderer_type(FlEngine* engine);
 FlOpenGLManager* fl_engine_get_opengl_manager(FlEngine* engine);
 
 /**
+ * fl_engine_get_enable_impeller:
+ * @engine: an #FlEngine.
+ *
+ * Checks if the engine was started with Impeller.
+ *
+ * Returns: %TRUE if Impeller renders the frames.
+ */
+gboolean fl_engine_get_enable_impeller(FlEngine* engine);
+
+/**
  * fl_engine_get_display_monitor:
  * @engine: an #FlEngine.
  *

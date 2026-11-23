@@ -39,6 +39,13 @@ struct _FlViewRendererClass {
   void (*present_layers)(FlViewRenderer* renderer,
                          const FlutterLayer** layers,
                          size_t layers_count);
+
+  /**
+   * Checks if frames should be rendered as linear half float (GL_RGBA16F)
+   * extended range content. May be called from any thread. Optional, the
+   * default returns %FALSE.
+   */
+  gboolean (*is_extended_range)(FlViewRenderer* renderer);
 };
 
 /**
@@ -73,6 +80,17 @@ void fl_view_renderer_paint_background(FlViewRenderer* renderer, cairo_t* cr);
 void fl_view_renderer_present_layers(FlViewRenderer* renderer,
                                      const FlutterLayer** layers,
                                      size_t layers_count);
+
+/**
+ * fl_view_renderer_is_extended_range:
+ * @renderer: an #FlViewRenderer.
+ *
+ * Checks if frames for this renderer should be rendered as linear half float
+ * extended range content. May be called from any thread.
+ *
+ * Returns: %TRUE if the engine should render half float frames.
+ */
+gboolean fl_view_renderer_is_extended_range(FlViewRenderer* renderer);
 
 /**
  * fl_view_renderer_notify_frame:

@@ -280,8 +280,15 @@ static FlPluginRegistrar* fl_view_get_registrar_for_plugin(
                                  fl_engine_get_texture_registrar(self->engine));
 }
 
+static gboolean fl_view_is_extended_range(FlRenderable* renderable) {
+  FlView* self = FL_VIEW(renderable);
+  return self->renderer != nullptr &&
+         fl_view_renderer_is_extended_range(self->renderer);
+}
+
 static void fl_renderable_iface_init(FlRenderableInterface* iface) {
   iface->present_layers = fl_view_present_layers;
+  iface->is_extended_range = fl_view_is_extended_range;
 }
 
 static void fl_view_plugin_registry_iface_init(
@@ -843,4 +850,9 @@ G_MODULE_EXPORT void fl_view_set_background_color(FlView* self,
 FlViewAccessible* fl_view_get_accessible(FlView* self) {
   g_return_val_if_fail(FL_IS_VIEW(self), nullptr);
   return self->view_accessible;
+}
+
+FlViewRenderer* fl_view_get_renderer(FlView* self) {
+  g_return_val_if_fail(FL_IS_VIEW(self), nullptr);
+  return self->renderer;
 }

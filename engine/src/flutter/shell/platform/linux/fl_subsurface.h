@@ -8,12 +8,30 @@
 #include <gtk/gtk.h>
 
 struct wl_compositor;
+struct wl_display;
 struct wl_subcompositor;
 struct wl_surface;
+struct wp_color_manager_v1;
 
 G_BEGIN_DECLS
 
 G_DECLARE_FINAL_TYPE(FlSubsurface, fl_subsurface, FL, SUBSURFACE, GObject)
+
+/**
+ * FlSubsurfaceColorManagement:
+ * @display: the Wayland display, used to wait for image descriptions.
+ * @manager: the color manager, or %NULL to leave the surface untagged.
+ * @can_set_luminances: %TRUE if the compositor accepts set_luminances.
+ * @render_intent: the wp_color_manager_v1 render intent to use.
+ *
+ * Color management used to present extended linear sRGB content.
+ */
+typedef struct {
+  struct wl_display* display;
+  struct wp_color_manager_v1* manager;
+  gboolean can_set_luminances;
+  guint32 render_intent;
+} FlSubsurfaceColorManagement;
 
 /**
  * FlSubsurface:
@@ -28,14 +46,57 @@ G_DECLARE_FINAL_TYPE(FlSubsurface, fl_subsurface, FL, SUBSURFACE, GObject)
  * @compositor: the Wayland compositor to create the surface with.
  * @subcompositor: the Wayland subcompositor to create the subsurface with.
  * @parent_surface: the Wayland surface to attach the subsurface to.
+ * @color_management: (nullable): color management for extended range
+ * content, or %NULL.
  *
  * Creates a new Wayland subsurface on @parent_surface.
  *
  * Returns: a new #FlSubsurface.
  */
-FlSubsurface* fl_subsurface_new(struct wl_compositor* compositor,
-                                struct wl_subcompositor* subcompositor,
-                                struct wl_surface* parent_surface);
+FlSubsurface* fl_subsurface_new(
+    struct wl_compositor* compositor,
+    struct wl_subcompositor* subcompositor,
+    struct wl_surface* parent_surface,
+    const FlSubsurfaceColorManagement* color_management);
+
+/**
+ * fl_subsurface_supports_extended_range:
+ * @subsurface: an #FlSubsurface.
+ *
+ * Returns: %TRUE if the subsurface can be tagged as extended linear sRGB.
+ */
+gboolean fl_subsurface_supports_extended_range(FlSubsurface* subsurface);
+
+/**
+ * fl_subsurface_set_extended_range:
+ * @subsurface: an #FlSubsurface.
+ * @linear: %TRUE if the next buffer holds linear sRGB values, %FALSE if it
+ * holds gamma-encoded sRGB values.
+ * @headroom: the brightest value shown for linear content, relative to SDR
+ * white (1.0 clips at SDR white).
+ *
+ * Tags the subsurface for the next commit. Linear content is described with
+ * the ext_linear transfer function, 1.0 anchored to the compositor's reference
+ * white. May be called from any thread; blocks until the compositor has
+ * accepted a new image description.
+ *
+ * Returns: %FALSE if linear content was requested but cannot be tagged.
+ */
+gboolean fl_subsurface_set_extended_range(FlSubsurface* subsurface,
+                                          gboolean linear,
+                                          double headroom);
+
+/**
+ * fl_subsurface_get_headroom:
+ * @subsurface: an #FlSubsurface.
+ *
+ * Queries the compositor's preferred image description for the subsurface and
+ * returns its target peak luminance over its reference white. May be called
+ * from any thread.
+ *
+ * Returns: the headroom, 1.0 if unknown or the surface can't show it.
+ */
+double fl_subsurface_get_headroom(FlSubsurface* subsurface);
 
 /**
  * fl_subsurface_get_surface:

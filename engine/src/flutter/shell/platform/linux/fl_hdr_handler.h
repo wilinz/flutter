@@ -5,7 +5,7 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_FL_HDR_HANDLER_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_FL_HDR_HANDLER_H_
 
-#include "flutter/shell/platform/linux/public/flutter_linux/fl_binary_messenger.h"
+#include "flutter/shell/platform/linux/public/flutter_linux/fl_engine.h"
 
 G_BEGIN_DECLS
 
@@ -14,20 +14,21 @@ G_DECLARE_FINAL_TYPE(FlHdrHandler, fl_hdr_handler, FL, HDR_HANDLER, GObject);
 /**
  * FlHdrHandler:
  *
- * #FlHdrHandler answers the flutter/hdr channel. The GTK embedder presents
- * through an 8-bit SDR surface, so it reports no extended range capability
- * and keeps presentation in SDR.
+ * #FlHdrHandler answers the flutter/hdr channel for the implicit view.
+ * Extended range presentation needs the Wayland subsurface renderer and a
+ * compositor with wp_color_manager_v1; otherwise it reports SDR only.
  */
 
 /**
  * fl_hdr_handler_new:
- * @messenger: an #FlBinaryMessenger.
+ * @engine: the #FlEngine the handler belongs to. Not referenced, the engine
+ * owns the handler.
  *
  * Creates a new handler for the flutter/hdr channel.
  *
  * Returns: a new #FlHdrHandler.
  */
-FlHdrHandler* fl_hdr_handler_new(FlBinaryMessenger* messenger);
+FlHdrHandler* fl_hdr_handler_new(FlEngine* engine);
 
 G_END_DECLS
 

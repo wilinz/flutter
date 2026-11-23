@@ -14,6 +14,22 @@
 
 G_BEGIN_DECLS
 
+/**
+ * FlSubsurfaceFrameEncoding:
+ * @FL_SUBSURFACE_FRAME_ENCODING_SRGB: 8-bit gamma-encoded sRGB.
+ * @FL_SUBSURFACE_FRAME_ENCODING_EXTENDED_SRGB: half float gamma-encoded
+ * extended sRGB, as rendered by Impeller.
+ * @FL_SUBSURFACE_FRAME_ENCODING_LINEAR: half float linear extended sRGB, as
+ * rendered by Skia.
+ *
+ * How a frame texture encodes its values.
+ */
+typedef enum {
+  FL_SUBSURFACE_FRAME_ENCODING_SRGB,
+  FL_SUBSURFACE_FRAME_ENCODING_EXTENDED_SRGB,
+  FL_SUBSURFACE_FRAME_ENCODING_LINEAR,
+} FlSubsurfaceFrameEncoding;
+
 G_DECLARE_FINAL_TYPE(FlSubsurfaceEGL,
                      fl_subsurface_egl,
                      FL,
@@ -65,11 +81,25 @@ void fl_subsurface_egl_resize(FlSubsurfaceEGL* egl,
                               size_t height);
 
 /**
+ * fl_subsurface_egl_is_extended_range:
+ * @egl: an #FlSubsurfaceEGL.
+ *
+ * Checks if frames can be presented as extended linear sRGB, i.e. the window
+ * surface is half float and the subsurface can be tagged. May be called from
+ * any thread.
+ *
+ * Returns: %TRUE if linear half float frames can be presented.
+ */
+gboolean fl_subsurface_egl_is_extended_range(FlSubsurfaceEGL* egl);
+
+/**
  * fl_subsurface_egl_present:
  * @egl: an #FlSubsurfaceEGL.
  * @texture_id: the OpenGL texture holding the frame to present.
  * @width: the frame width in pixels.
  * @height: the frame height in pixels.
+ * @encoding: how @texture_id encodes its values.
+ * @headroom: the brightest linear value to show, relative to SDR white.
  * @fence: (allow-none): an #FlGLFence reached when @texture_id has finished
  * rendering, or %NULL if the rendering is known to have completed.
  *
@@ -84,6 +114,8 @@ void fl_subsurface_egl_present(FlSubsurfaceEGL* egl,
                                GLuint texture_id,
                                size_t width,
                                size_t height,
+                               FlSubsurfaceFrameEncoding encoding,
+                               double headroom,
                                FlGLFence* fence);
 
 G_END_DECLS

@@ -32,6 +32,10 @@ struct _FlSubsurfaceEGL {
   // EGL surface that draws onto egl_window.
   EGLSurface egl_surface;
 
+  // TRUE if the window surface is half float and the subsurface can be tagged,
+  // so frames may hold linear extended range values. Read from other threads.
+  gint extended_range;
+
   // TRUE if glBlitFramebuffer can be used to copy the engine frame to the
   // window surface. When FALSE the frame is drawn with [shader] instead.
   gboolean can_blit;
@@ -43,6 +47,10 @@ struct _FlSubsurfaceEGL {
   // Shader used to draw the engine frame when glBlitFramebuffer is unavailable.
   // NULL when [can_blit].
   FlCompositorOpenGLShader* shader;
+
+  // Shader that decodes gamma-encoded half float frames to linear. Only
+  // created for extended range window surfaces.
+  FlCompositorOpenGLShader* decode_shader;
 
   // The buffer scale set on the subsurface. Buffer sizes have to be an integer
   // multiple of this.
@@ -112,11 +120,35 @@ static void setup(FlSubsurfaceEGL* self,
                                              EGL_ALPHA_SIZE,
                                              8,
                                              EGL_NONE};
+  // Half float window surface for extended range content.
+  static const EGLint f16_config_attributes[] = {
+      EGL_SURFACE_TYPE,
+      EGL_WINDOW_BIT,
+      EGL_RENDERABLE_TYPE,
+      EGL_OPENGL_ES2_BIT,
+      EGL_COLOR_COMPONENT_TYPE_EXT,
+      EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT,
+      EGL_RED_SIZE,
+      16,
+      EGL_GREEN_SIZE,
+      16,
+      EGL_BLUE_SIZE,
+      16,
+      EGL_ALPHA_SIZE,
+      16,
+      EGL_NONE};
   EGLConfig egl_config;
   EGLint num_config;
-  if (!eglChooseConfig(egl_display, config_attributes, &egl_config, 1,
-                       &num_config) ||
-      num_config == 0) {
+  gboolean extended_range = FALSE;
+  if (fl_subsurface_supports_extended_range(self->subsurface) &&
+      epoxy_has_egl_extension(egl_display, "EGL_EXT_pixel_format_float") &&
+      eglChooseConfig(egl_display, f16_config_attributes, &egl_config, 1,
+                      &num_config) &&
+      num_config > 0) {
+    extended_range = TRUE;
+  } else if (!eglChooseConfig(egl_display, config_attributes, &egl_config, 1,
+                              &num_config) ||
+             num_config == 0) {
     g_warning("Failed to choose EGL config for subsurface");
     return;
   }
@@ -149,6 +181,7 @@ static void setup(FlSubsurfaceEGL* self,
     g_warning("Failed to create EGL window surface for subsurface");
     return;
   }
+  g_atomic_int_set(&self->extended_range, extended_range);
 
   wl_surface_set_buffer_scale(surface, scale);
 
@@ -167,6 +200,11 @@ static void setup(FlSubsurfaceEGL* self,
     // context shares, so its program and buffers are usable when the subsurface
     // context is current.
     self->shader = fl_compositor_opengl_shader_new(self->opengl_manager);
+    fl_opengl_manager_clear_current(self->opengl_manager);
+  }
+  if (extended_range) {
+    self->decode_shader =
+        fl_compositor_opengl_shader_new_decoding_srgb(self->opengl_manager);
     fl_opengl_manager_clear_current(self->opengl_manager);
   }
 }
@@ -203,6 +241,7 @@ static void fl_subsurface_egl_dispose(GObject* object) {
     self->egl_window = nullptr;
   }
   g_clear_object(&self->shader);
+  g_clear_object(&self->decode_shader);
   g_clear_object(&self->subsurface);
   g_clear_object(&self->opengl_manager);
 
@@ -247,10 +286,17 @@ void fl_subsurface_egl_resize(FlSubsurfaceEGL* self,
   }
 }
 
+gboolean fl_subsurface_egl_is_extended_range(FlSubsurfaceEGL* self) {
+  g_return_val_if_fail(FL_IS_SUBSURFACE_EGL(self), FALSE);
+  return g_atomic_int_get(&self->extended_range);
+}
+
 void fl_subsurface_egl_present(FlSubsurfaceEGL* self,
                                GLuint texture_id,
                                size_t width,
                                size_t height,
+                               FlSubsurfaceFrameEncoding encoding,
+                               double headroom,
                                FlGLFence* fence) {
   g_return_if_fail(FL_IS_SUBSURFACE_EGL(self));
 
@@ -304,7 +350,16 @@ void fl_subsurface_egl_present(FlSubsurfaceEGL* self,
 
   // The subsurface context shares resources with the engine, so the engine's
   // frame texture can be read directly without using EGLImage.
-  if (self->can_blit) {
+  // Gamma-encoded half float frames are decoded to linear while drawing.
+  FlCompositorOpenGLShader* draw_shader = nullptr;
+  if (encoding == FL_SUBSURFACE_FRAME_ENCODING_EXTENDED_SRGB &&
+      self->decode_shader != nullptr) {
+    draw_shader = self->decode_shader;
+  } else if (!self->can_blit) {
+    draw_shader = self->shader;
+  }
+
+  if (draw_shader == nullptr) {
     // Attach the frame texture to a persistent framebuffer and blit it to the
     // window surface. The framebuffer is created lazily on the first present
     // and reused for subsequent frames.
@@ -318,15 +373,25 @@ void fl_subsurface_egl_present(FlSubsurfaceEGL* self,
     glBlitFramebuffer(0, 0, frame_width, frame_height, 0, dst_y0, frame_width,
                       dst_y0 + frame_height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
   } else {
-    // glBlitFramebuffer is unavailable; draw the frame texture as a fullscreen
-    // quad with the shader instead.
+    // Draw the frame texture as a fullscreen quad, when glBlitFramebuffer is
+    // unavailable or the frame has to be decoded.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDisable(GL_BLEND);
     glViewport(0, dst_y0, frame_width, frame_height);
-    fl_compositor_opengl_shader_use(self->shader);
+    fl_compositor_opengl_shader_use(draw_shader);
     fl_compositor_opengl_shader_set_offset(self->shader, 0, 0);
     fl_compositor_opengl_shader_set_scale(self->shader, 1, 1);
     glBindTexture(GL_TEXTURE_2D, texture_id);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+  }
+  // Tag the buffer by what the frame holds: linear values from a half float
+  // frame, gamma-encoded sRGB otherwise. The tag is applied by the commit in
+  // eglSwapBuffers().
+  gboolean linear = encoding != FL_SUBSURFACE_FRAME_ENCODING_SRGB;
+  if (g_atomic_int_get(&self->extended_range) &&
+      !fl_subsurface_set_extended_range(self->subsurface, linear, headroom)) {
+    g_warning("Extended range presentation unavailable, using SDR");
+    g_atomic_int_set(&self->extended_range, FALSE);
   }
   eglSwapBuffers(egl_display, self->egl_surface);
   self->buffer_width = self->window_width;

@@ -28,6 +28,8 @@ struct _FlRenderableInterface {
   void (*present_layers)(FlRenderable* renderable,
                          const FlutterLayer** layers,
                          size_t layers_count);
+
+  gboolean (*is_extended_range)(FlRenderable* renderable);
 };
 
 /**
@@ -41,6 +43,17 @@ struct _FlRenderableInterface {
 void fl_renderable_present_layers(FlRenderable* renderable,
                                   const FlutterLayer** layers,
                                   size_t layers_count);
+
+/**
+ * fl_renderable_is_extended_range:
+ * @renderable: an #FlRenderable.
+ *
+ * Checks if frames for @renderable should be rendered as linear half float
+ * extended range content. May be called from any thread.
+ *
+ * Returns: %TRUE if half float frames should be rendered.
+ */
+gboolean fl_renderable_is_extended_range(FlRenderable* renderable);
 
 G_END_DECLS
 

@@ -225,9 +225,14 @@ GLint fl_compositor_opengl_get_frame_format(const FlutterLayer** layers,
       continue;
     }
 
-    return layer->backing_store->open_gl.framebuffer.target == GL_BGRA8_EXT
-               ? GL_BGRA_EXT
-               : GL_RGBA;
+    switch (layer->backing_store->open_gl.framebuffer.target) {
+      case GL_BGRA8_EXT:
+        return GL_BGRA_EXT;
+      case GL_RGBA16F:
+        return GL_RGBA16F;
+      default:
+        return GL_RGBA;
+    }
   }
 
   return GL_RGBA;

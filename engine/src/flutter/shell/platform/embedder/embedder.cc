@@ -301,6 +301,11 @@ static const flutter::DlIRect FlutterRectToDlIRect(FlutterRect flutter_rect) {
 #define GL_BGRA8_EXT 0x93A1
 #endif
 
+// Half float backing stores carry extended range content.
+#ifndef GL_RGBA16F
+#define GL_RGBA16F 0x881A
+#endif
+
 static std::optional<SkColorType> FlutterFormatToSkColorType(uint32_t format) {
   switch (format) {
     case GL_BGRA8_EXT:
@@ -1209,6 +1214,8 @@ static std::optional<impeller::PixelFormat> FlutterFormatToImpellerPixelFormat(
       return impeller::PixelFormat::kB8G8R8A8UNormInt;
     case GL_RGBA8:
       return impeller::PixelFormat::kR8G8B8A8UNormInt;
+    case GL_RGBA16F:
+      return impeller::PixelFormat::kR16G16B16A16Float;
     default:
       FML_LOG(ERROR) << "Cannot convert format " << format
                      << " to impeller::PixelFormat.";

@@ -118,7 +118,8 @@ TEST_F(FlSubsurfaceEGLTest, Present) {
 
   EXPECT_CALL(epoxy, glBlitFramebuffer);
 
-  fl_subsurface_egl_present(egl, 1, kWidth, kHeight, nullptr);
+  fl_subsurface_egl_present(egl, 1, kWidth, kHeight,
+                            FL_SUBSURFACE_FRAME_ENCODING_SRGB, 1.0, nullptr);
 }
 
 // The native window is resized if a frame of a different size arrives, so the
@@ -130,7 +131,7 @@ TEST_F(FlSubsurfaceEGLTest, PresentResizes) {
   EXPECT_CALL(wayland, EGLWindowResize(kBufferWidth + 50, kBufferHeight + 50));
 
   fl_subsurface_egl_present(egl, 1, kBufferWidth + 50, kBufferHeight + 50,
-                            nullptr);
+                            FL_SUBSURFACE_FRAME_ENCODING_SRGB, 1.0, nullptr);
 }
 
 // Drivers without glBlitFramebuffer draw the frame with a shader instead.
@@ -144,7 +145,8 @@ TEST_F(FlSubsurfaceEGLTest, PresentWithoutBlit) {
 
   EXPECT_CALL(epoxy, glBlitFramebuffer).Times(0);
 
-  fl_subsurface_egl_present(egl, 1, kWidth, kHeight, nullptr);
+  fl_subsurface_egl_present(egl, 1, kWidth, kHeight,
+                            FL_SUBSURFACE_FRAME_ENCODING_SRGB, 1.0, nullptr);
 }
 
 // A frame the same size as the buffer is written to the whole buffer and
@@ -158,7 +160,8 @@ TEST_F(FlSubsurfaceEGLTest, PresentMatchingBuffer) {
                                        ::testing::_, ::testing::_));
   EXPECT_CALL(epoxy, eglSwapBuffers).Times(1);
 
-  fl_subsurface_egl_present(egl, 1, kBufferWidth, kBufferHeight, nullptr);
+  fl_subsurface_egl_present(egl, 1, kBufferWidth, kBufferHeight,
+                            FL_SUBSURFACE_FRAME_ENCODING_SRGB, 1.0, nullptr);
 }
 
 // The buffer a frame is drawn into is acquired when the previous frame is
@@ -172,7 +175,7 @@ TEST_F(FlSubsurfaceEGLTest, PresentDifferentSizeSwapsStaleBuffer) {
   EXPECT_CALL(epoxy, eglSwapBuffers).Times(2);
 
   fl_subsurface_egl_present(egl, 1, kBufferWidth + 50, kBufferHeight + 50,
-                            nullptr);
+                            FL_SUBSURFACE_FRAME_ENCODING_SRGB, 1.0, nullptr);
 }
 
 // The whole frame is still written, rather than being aligned against the size
@@ -187,7 +190,7 @@ TEST_F(FlSubsurfaceEGLTest, PresentDifferentSizeWritesWholeFrame) {
                                 ::testing::_, ::testing::_));
 
   fl_subsurface_egl_present(egl, 1, kBufferWidth + 50, kBufferHeight + 50,
-                            nullptr);
+                            FL_SUBSURFACE_FRAME_ENCODING_SRGB, 1.0, nullptr);
 }
 
 // The shader path writes the whole frame in the same way.
@@ -202,7 +205,7 @@ TEST_F(FlSubsurfaceEGLTest, PresentDifferentSizeWithoutBlit) {
   EXPECT_CALL(epoxy, glViewport(0, 0, kBufferWidth + 50, kBufferHeight + 50));
 
   fl_subsurface_egl_present(egl, 1, kBufferWidth + 50, kBufferHeight + 50,
-                            nullptr);
+                            FL_SUBSURFACE_FRAME_ENCODING_SRGB, 1.0, nullptr);
 }
 
 // A resize from the window leaves the buffer stale in the same way, so the
@@ -217,7 +220,7 @@ TEST_F(FlSubsurfaceEGLTest, PresentAfterResizeSwapsStaleBuffer) {
   EXPECT_CALL(epoxy, eglSwapBuffers).Times(2);
 
   fl_subsurface_egl_present(egl, 1, kBufferWidth + 50, kBufferHeight + 50,
-                            nullptr);
+                            FL_SUBSURFACE_FRAME_ENCODING_SRGB, 1.0, nullptr);
 }
 
 // Once the buffer has caught up with the frame size, frames are presented with
@@ -227,12 +230,12 @@ TEST_F(FlSubsurfaceEGLTest, PresentSecondFrameOfNewSize) {
   ASSERT_NE(egl, nullptr);
 
   fl_subsurface_egl_present(egl, 1, kBufferWidth + 50, kBufferHeight + 50,
-                            nullptr);
+                            FL_SUBSURFACE_FRAME_ENCODING_SRGB, 1.0, nullptr);
 
   EXPECT_CALL(epoxy, eglSwapBuffers).Times(1);
 
   fl_subsurface_egl_present(egl, 1, kBufferWidth + 50, kBufferHeight + 50,
-                            nullptr);
+                            FL_SUBSURFACE_FRAME_ENCODING_SRGB, 1.0, nullptr);
 }
 
 // Wayland requires buffer sizes to be an integer multiple of the buffer scale,
@@ -244,7 +247,8 @@ TEST_F(FlSubsurfaceEGLTest, PresentRoundsUpToBufferScale) {
 
   EXPECT_CALL(wayland, EGLWindowResize(kScale, kScale));
 
-  fl_subsurface_egl_present(egl, 1, 1, 1, nullptr);
+  fl_subsurface_egl_present(egl, 1, 1, 1, FL_SUBSURFACE_FRAME_ENCODING_SRGB,
+                            1.0, nullptr);
 }
 
 // A rounded up frame doesn't fill the buffer, and OpenGL puts the origin at the
@@ -257,7 +261,8 @@ TEST_F(FlSubsurfaceEGLTest, PresentRoundedFrameWritesAtTopOfBuffer) {
   EXPECT_CALL(epoxy, glBlitFramebuffer(0, 0, 1, 1, 0, kScale - 1, 1, kScale,
                                        ::testing::_, ::testing::_));
 
-  fl_subsurface_egl_present(egl, 1, 1, 1, nullptr);
+  fl_subsurface_egl_present(egl, 1, 1, 1, FL_SUBSURFACE_FRAME_ENCODING_SRGB,
+                            1.0, nullptr);
 }
 
 // A resize from the window is rounded up in the same way.

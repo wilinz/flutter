@@ -63,6 +63,11 @@ struct _FlViewRendererSubsurface {
   // the handler connected to it. NULL and zero when not synchronized.
   GdkFrameClock* frame_clock;
   gulong after_paint_handler;
+
+  // TRUE while extended range presentation is requested through flutter/hdr,
+  // and the last known headroom in thousandths. Read on the raster thread.
+  gint hdr_enabled;
+  gint headroom_milli;
 };
 
 G_DEFINE_TYPE(FlViewRendererSubsurface,
@@ -509,9 +514,22 @@ static void fl_view_renderer_subsurface_present_layers(
   // context. This reads the engine's frame texture directly, as the subsurface
   // context shares resources with the engine.
   if (width > 0 && height > 0) {
+    // Half float frames hold values above SDR white, which are only shown
+    // while extended range presentation is enabled. Impeller renders them
+    // gamma-encoded, Skia linear.
+    FlSubsurfaceFrameEncoding encoding = FL_SUBSURFACE_FRAME_ENCODING_SRGB;
+    if (fl_compositor_opengl_get_frame_format(layers, layers_count) ==
+        GL_RGBA16F) {
+      encoding = fl_engine_get_enable_impeller(self->engine)
+                     ? FL_SUBSURFACE_FRAME_ENCODING_EXTENDED_SRGB
+                     : FL_SUBSURFACE_FRAME_ENCODING_LINEAR;
+    }
+    double headroom = g_atomic_int_get(&self->hdr_enabled)
+                          ? g_atomic_int_get(&self->headroom_milli) / 1000.0
+                          : 1.0;
     fl_subsurface_egl_present(self->egl,
                               fl_framebuffer_get_texture_id(self->framebuffer),
-                              width, height, fence);
+                              width, height, encoding, headroom, fence);
   }
 
   g_mutex_unlock(&self->frame_mutex);
@@ -522,6 +540,15 @@ static void fl_view_renderer_subsurface_present_layers(
 
   // Notify the GTK thread so it can emit the first frame and resize the view.
   g_idle_add(frame_presented_cb, g_object_ref(self));
+}
+
+// Implements FlViewRenderer::is_extended_range.
+static gboolean fl_view_renderer_subsurface_is_extended_range(
+    FlViewRenderer* renderer) {
+  FlViewRendererSubsurface* self = FL_VIEW_RENDERER_SUBSURFACE(renderer);
+
+  g_autoptr(GMutexLocker) locker = g_mutex_locker_new(&self->frame_mutex);
+  return self->egl != nullptr && fl_subsurface_egl_is_extended_range(self->egl);
 }
 
 static void fl_view_renderer_subsurface_dispose(GObject* object) {
@@ -564,10 +591,13 @@ static void fl_view_renderer_subsurface_class_init(
 
   FlViewRendererClass* renderer_class = FL_VIEW_RENDERER_CLASS(klass);
   renderer_class->present_layers = fl_view_renderer_subsurface_present_layers;
+  renderer_class->is_extended_range =
+      fl_view_renderer_subsurface_is_extended_range;
 }
 
 static void fl_view_renderer_subsurface_init(FlViewRendererSubsurface* self) {
   g_mutex_init(&self->frame_mutex);
+  self->headroom_milli = 1000;
 
   // Connected after the default handler so this runs once FlView has sent the
   // new window metrics to the engine, allowing the frame of the new size to be
@@ -587,4 +617,47 @@ FlViewRendererSubsurface* fl_view_renderer_subsurface_new(
   self->engine = FL_ENGINE(g_object_ref(engine));
   self->sized_to_content = sized_to_content;
   return self;
+}
+
+void fl_view_renderer_subsurface_get_hdr_capabilities(
+    FlViewRendererSubsurface* self,
+    gboolean* surface,
+    gboolean* enabled,
+    double* headroom) {
+  g_return_if_fail(FL_IS_VIEW_RENDERER_SUBSURFACE(self));
+
+  g_autoptr(FlSubsurface) subsurface = nullptr;
+  gboolean extended_range = FALSE;
+  {
+    g_autoptr(GMutexLocker) locker = g_mutex_locker_new(&self->frame_mutex);
+    if (self->subsurface != nullptr) {
+      subsurface = FL_SUBSURFACE(g_object_ref(self->subsurface));
+    }
+    extended_range =
+        self->egl != nullptr && fl_subsurface_egl_is_extended_range(self->egl);
+  }
+
+  // Queried outside frame_mutex so the raster thread isn't held up waiting
+  // for the compositor.
+  double value = 1.0;
+  if (extended_range && subsurface != nullptr) {
+    value = fl_subsurface_get_headroom(subsurface);
+  }
+  g_atomic_int_set(&self->headroom_milli, static_cast<gint>(value * 1000));
+
+  *surface = extended_range;
+  *enabled = g_atomic_int_get(&self->hdr_enabled);
+  *headroom = value;
+}
+
+void fl_view_renderer_subsurface_set_hdr_enabled(FlViewRendererSubsurface* self,
+                                                 gboolean enabled) {
+  g_return_if_fail(FL_IS_VIEW_RENDERER_SUBSURFACE(self));
+
+  if (g_atomic_int_get(&self->hdr_enabled) == enabled) {
+    return;
+  }
+  g_atomic_int_set(&self->hdr_enabled, enabled);
+  // The new image description is applied with the next frame.
+  fl_engine_schedule_frame(self->engine);
 }

@@ -80,8 +80,14 @@ static GLuint create_texture(GLint format, size_t width, size_t height) {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format,
-               GL_UNSIGNED_BYTE, nullptr);
+  if (format == GL_RGBA16F) {
+    // Half float frames hold linear extended range values.
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA,
+                 GL_HALF_FLOAT, nullptr);
+  } else {
+    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format,
+                 GL_UNSIGNED_BYTE, nullptr);
+  }
   glBindTexture(GL_TEXTURE_2D, 0);
   return texture_id;
 }
@@ -156,8 +162,9 @@ FlFramebuffer* fl_framebuffer_new_multisample(GLint format,
       // single-sample framebuffer texture.
       glGenRenderbuffers(1, &self->color_renderbuffer);
       glBindRenderbuffer(GL_RENDERBUFFER, self->color_renderbuffer);
-      glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_RGBA8, width,
-                                       height);
+      glRenderbufferStorageMultisample(
+          GL_RENDERBUFFER, 4, format == GL_RGBA16F ? GL_RGBA16F : GL_RGBA8,
+          width, height);
       glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                                 GL_RENDERBUFFER, self->color_renderbuffer);
 
