@@ -98,7 +98,7 @@ jobs:
         working-directory: flutter/engine/src
         run: |
           ./flutter/tools/gn --target-dir "$OUT" --mac --mac-cpu ${{ matrix.cpu }} \
-            --runtime-mode ${{ matrix.mode }} --no-lto --prebuilt-dart-sdk --no-rbe --no-goma --ccache
+            --runtime-mode ${{ matrix.mode }} --no-lto --prebuilt-dart-sdk --no-rbe --ccache
           ninja -C "out/$OUT" flutter/shell/platform/darwin/macos:zip_macos_flutter_framework
           ccache -s
           df -h /

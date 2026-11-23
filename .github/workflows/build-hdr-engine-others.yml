@@ -87,7 +87,7 @@ jobs:
         if: steps.pick.outputs.run == '1'
         working-directory: flutter/engine/src
         run: |
-          ./flutter/tools/gn ${{ matrix.gn }} --no-rbe --no-goma
+          ./flutter/tools/gn ${{ matrix.gn }} --no-rbe
           ninja -C "out/${{ matrix.out }}" ${{ matrix.target }}
           df -h /
 
@@ -139,6 +139,6 @@ jobs:
       - name: Build
         working-directory: flutter/engine/src
         run: |
-          python3 ./flutter/tools/gn --runtime-mode profile --no-lto --target-dir ci/host_profile --no-rbe --no-goma
+          python3 ./flutter/tools/gn --runtime-mode profile --no-lto --target-dir ci/host_profile --no-rbe
           ninja -C out/ci/host_profile flutter/shell/platform/windows:flutter_windows
           df -h
