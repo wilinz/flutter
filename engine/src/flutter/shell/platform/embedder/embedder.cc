@@ -58,6 +58,7 @@ extern const intptr_t kPlatformStrongDillSize;
 #include "flutter/shell/platform/embedder/embedder.h"
 #include "flutter/shell/platform/embedder/embedder_engine.h"
 #include "flutter/shell/platform/embedder/embedder_external_texture_resolver.h"
+#include "flutter/shell/platform/embedder/embedder_linear_output.h"
 #include "flutter/shell/platform/embedder/embedder_platform_message_response.h"
 #include "flutter/shell/platform/embedder/embedder_render_target.h"
 #include "flutter/shell/platform/embedder/embedder_render_target_skia.h"
@@ -302,6 +303,20 @@ static std::optional<SkColorType> FlutterFormatToSkColorType(uint32_t format) {
                      << " to SkColorType.";
       return std::nullopt;
   }
+}
+
+// Linear sRGB primaries whose stored values are the linear values times
+// GetLinearOutputScale(), so SDR white maps to the display's SDR white level
+// on linear scRGB swap chains.
+static sk_sp<SkColorSpace> MakeLinearOutputColorSpace() {
+  const float scale = flutter::GetLinearOutputScale();
+  if (scale == 1.0f) {
+    return SkColorSpace::MakeSRGBLinear();
+  }
+  // Decoding multiplies by 1/scale, so encoding multiplies by scale.
+  const skcms_TransferFunction fn = {1.0f, 1.0f / scale, 0.0f, 1.0f / scale,
+                                     0.0f, 0.0f,         0.0f};
+  return SkColorSpace::MakeRGB(fn, SkNamedGamut::kSRGB);
 }
 
 #endif
@@ -934,7 +949,7 @@ static sk_sp<SkSurface> MakeSkSurfaceFromBackingStore(
   // gamma sRGB semantics.
   sk_sp<SkColorSpace> color_space =
       (color_type.value() == kRGBA_F16_SkColorType)
-          ? SkColorSpace::MakeSRGBLinear()
+          ? MakeLinearOutputColorSpace()
           : SkColorSpace::MakeSRGB();
 
   auto surface = SkSurfaces::WrapBackendRenderTarget(
@@ -987,7 +1002,7 @@ static sk_sp<SkSurface> MakeSkSurfaceFromBackingStore(
   // See matching F16/linear-scRGB handling in the framebuffer variant above.
   sk_sp<SkColorSpace> color_space =
       (color_type.value() == kRGBA_F16_SkColorType)
-          ? SkColorSpace::MakeSRGBLinear()
+          ? MakeLinearOutputColorSpace()
           : SkColorSpace::MakeSRGB();
 
   auto sk_surface = SkSurfaces::WrapBackendRenderTarget(

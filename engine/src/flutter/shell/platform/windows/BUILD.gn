@@ -91,6 +91,8 @@ source_set("flutter_windows_source") {
     "flutter_windows_view.h",
     "flutter_windows_view_controller.cc",
     "flutter_windows_view_controller.h",
+    "hdr_handler.cc",
+    "hdr_handler.h",
     "host_window.cc",
     "host_window.h",
     "host_window_dialog.cc",
@@ -153,6 +155,7 @@ source_set("flutter_windows_source") {
 
   libs = [
     "dwmapi.lib",
+    "dxgi.lib",
     "imm32.lib",
   ]
 

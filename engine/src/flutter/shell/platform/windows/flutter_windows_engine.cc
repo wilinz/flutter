@@ -257,6 +257,7 @@ FlutterWindowsEngine::FlutterWindowsEngine(
 
   cursor_handler_ =
       std::make_unique<CursorHandler>(messenger_wrapper_.get(), this);
+  hdr_handler_ = std::make_unique<HdrHandler>(messenger_wrapper_.get(), this);
   platform_handler_ =
       std::make_unique<PlatformHandler>(messenger_wrapper_.get(), this);
   window_manager_ = std::make_unique<WindowManager>(this);
@@ -590,6 +591,10 @@ std::unique_ptr<FlutterWindowsView> FlutterWindowsEngine::CreateView(
     std::unique_lock write_lock(views_mutex_);
     FML_DCHECK(views_.find(view_id) == views_.end());
     views_[view_id] = view.get();
+  }
+
+  if (view->IsImplicitView() && hdr_handler_) {
+    hdr_handler_->Refresh();
   }
 
   if (!view->IsImplicitView()) {

@@ -190,19 +190,25 @@ bool Manager::InitializeConfig() {
   // CreateWindowSurface completes the HDR presentation chain. Falls back to
   // the legacy RGBA8 config on systems where ANGLE can't supply F16 (e.g.
   // older drivers, WARP software fallback, D3D11 Feature Level 9_3).
-  const EGLint f16_config_attributes[] = {
-      EGL_COLOR_COMPONENT_TYPE_EXT, EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT,
-      EGL_RED_SIZE,                 16,
-      EGL_GREEN_SIZE,               16,
-      EGL_BLUE_SIZE,                16,
-      EGL_ALPHA_SIZE,               16,
-      EGL_DEPTH_SIZE,               8,
-      EGL_STENCIL_SIZE,             8,
-      EGL_NONE};
+  const EGLint f16_config_attributes[] = {EGL_COLOR_COMPONENT_TYPE_EXT,
+                                          EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT,
+                                          EGL_RED_SIZE,
+                                          16,
+                                          EGL_GREEN_SIZE,
+                                          16,
+                                          EGL_BLUE_SIZE,
+                                          16,
+                                          EGL_ALPHA_SIZE,
+                                          16,
+                                          EGL_DEPTH_SIZE,
+                                          8,
+                                          EGL_STENCIL_SIZE,
+                                          8,
+                                          EGL_NONE};
 
   const EGLint rgba8_config_attributes[] = {
-      EGL_RED_SIZE,   8, EGL_GREEN_SIZE,   8, EGL_BLUE_SIZE,  8,
-      EGL_ALPHA_SIZE, 8, EGL_DEPTH_SIZE,   8, EGL_STENCIL_SIZE, 8,
+      EGL_RED_SIZE,   8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE,    8,
+      EGL_ALPHA_SIZE, 8, EGL_DEPTH_SIZE, 8, EGL_STENCIL_SIZE, 8,
       EGL_NONE};
 
   EGLint num_config = 0;
@@ -336,9 +342,8 @@ std::unique_ptr<WindowSurface> Manager::CreateWindowSurface(HWND hwnd,
   //      SetColorSpace1. DirectComposition routes through
   //      CreateSwapChainForComposition which uses FLIP_SEQUENTIAL.
   std::vector<EGLint> surface_attributes = {
-      EGL_FIXED_SIZE_ANGLE, EGL_TRUE,
-      EGL_WIDTH,            static_cast<EGLint>(width),
-      EGL_HEIGHT,           static_cast<EGLint>(height),
+      EGL_FIXED_SIZE_ANGLE,       EGL_TRUE,   EGL_WIDTH,
+      static_cast<EGLint>(width), EGL_HEIGHT, static_cast<EGLint>(height),
   };
   if (is_rgba16float_) {
     surface_attributes.push_back(EGL_GL_COLORSPACE);
@@ -356,14 +361,16 @@ std::unique_ptr<WindowSurface> Manager::CreateWindowSurface(HWND hwnd,
     EGLint err = ::eglGetError();
     FML_LOG(INFO) << "HDR surface creation failed (eglError=0x" << std::hex
                   << err << std::dec << "); retrying without HDR attributes.";
-    const EGLint fallback_attributes[] = {
-        EGL_FIXED_SIZE_ANGLE, EGL_TRUE,
-        EGL_WIDTH,            static_cast<EGLint>(width),
-        EGL_HEIGHT,           static_cast<EGLint>(height),
-        EGL_NONE};
-    surface = ::eglCreateWindowSurface(
-        display_, config_, static_cast<EGLNativeWindowType>(hwnd),
-        fallback_attributes);
+    const EGLint fallback_attributes[] = {EGL_FIXED_SIZE_ANGLE,
+                                          EGL_TRUE,
+                                          EGL_WIDTH,
+                                          static_cast<EGLint>(width),
+                                          EGL_HEIGHT,
+                                          static_cast<EGLint>(height),
+                                          EGL_NONE};
+    surface = ::eglCreateWindowSurface(display_, config_,
+                                       static_cast<EGLNativeWindowType>(hwnd),
+                                       fallback_attributes);
   }
 
   if (surface == EGL_NO_SURFACE) {
