@@ -1,8 +1,8 @@
 name: Build HDR engine (Linux, Android, Windows)
 
-# Compile check of this branch's engine changes for the platforms that cannot
-# be built on a Mac. Builds the profile embedder of each platform; uploads
-# nothing.
+# Builds this branch's engine changes for the platforms that cannot be built
+# on a Mac. The Android jobs upload the maven artifacts the Flutter tool needs
+# for a --local-engine build, so device testing can run on a Mac.
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   unix:
-    if: contains(fromJSON(inputs.platforms), 'linux') || contains(fromJSON(inputs.platforms), 'android')
+    if: contains(fromJSON(inputs.platforms), 'linux') || contains(fromJSON(inputs.platforms), 'android') || contains(fromJSON(inputs.platforms), 'android-debug')
     strategy:
       fail-fast: false
       matrix:
@@ -31,6 +31,13 @@ jobs:
             vars: '"download_linux_deps": True, "download_android_deps": True,'
             gn: --android --android-cpu arm64 --runtime-mode profile --target-dir ci/android_profile_arm64
             out: ci/android_profile_arm64
+            target: flutter/shell/platform/android:android_jar
+          # Debug artifacts let a Mac drive a --local-engine device run without
+          # a locally built host gen_snapshot.
+          - platform: android-debug
+            vars: '"download_linux_deps": True, "download_android_deps": True,'
+            gn: --android --android-cpu arm64 --runtime-mode debug --target-dir ci/android_debug_arm64
+            out: ci/android_debug_arm64
             target: flutter/shell/platform/android:android_jar
     runs-on: ubuntu-24.04
     timeout-minutes: 340
@@ -90,6 +97,19 @@ jobs:
           ./flutter/tools/gn ${{ matrix.gn }} --no-rbe
           ninja -k 0 -C "out/${{ matrix.out }}" ${{ matrix.target }}
           df -h /
+
+      - name: Upload engine artifacts
+        if: steps.pick.outputs.run == '1' && startsWith(matrix.platform, 'android')
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-${{ matrix.platform }}-arm64
+          path: |
+            flutter/engine/src/out/${{ matrix.out }}/flutter.jar
+            flutter/engine/src/out/${{ matrix.out }}/arm64_v8a_*.jar
+            flutter/engine/src/out/${{ matrix.out }}/*.pom
+            flutter/engine/src/out/${{ matrix.out }}/*.maven-metadata.xml
+            flutter/engine/src/out/${{ matrix.out }}/libflutter.so
+          if-no-files-found: error
 
   windows:
     if: contains(fromJSON(inputs.platforms), 'windows')
