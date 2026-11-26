@@ -38,7 +38,8 @@ jobs:
             vars: '"download_linux_deps": True, "download_android_deps": True,'
             gn: --android --android-cpu arm64 --runtime-mode debug --target-dir ci/android_debug_arm64
             out: ci/android_debug_arm64
-            target: flutter/shell/platform/android:android_jar
+            # Debug assets also ship the VM/isolate snapshots.
+            target: flutter/shell/platform/android:android_jar flutter/lib/snapshot:generate_snapshot_bin
     runs-on: ubuntu-24.04
     timeout-minutes: 340
     steps:
@@ -109,6 +110,7 @@ jobs:
             flutter/engine/src/out/${{ matrix.out }}/*.pom
             flutter/engine/src/out/${{ matrix.out }}/*.maven-metadata.xml
             flutter/engine/src/out/${{ matrix.out }}/libflutter.so
+            flutter/engine/src/out/${{ matrix.out }}/gen/flutter/lib/snapshot/*
           if-no-files-found: error
 
   windows:
