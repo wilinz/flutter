@@ -7,6 +7,7 @@
 #include "impeller/core/formats.h"
 #include "impeller/entity/contents/atlas_contents.h"
 #include "impeller/entity/contents/content_context.h"
+#include "impeller/entity/contents/texture_contents.h"
 #include "impeller/entity/contents/filters/blend_filter_contents.h"
 #include "impeller/entity/contents/pipelines.h"
 #include "impeller/entity/entity.h"
@@ -196,6 +197,7 @@ bool AtlasContents::Render(const ContentContext& renderer,
 
     FS::FragInfo frag_info{};
     frag_info.alpha = alpha_;
+    SetTextureColorTransform(frag_info, *geometry_->GetAtlas());
     FS::BindFragInfo(pass, data_host_buffer.EmplaceUniform((frag_info)));
     FS::BindTextureSampler(pass, geometry_->GetAtlas(), dst_sampler);
     return pass.Draw().ok();

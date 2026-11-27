@@ -4,6 +4,8 @@
 
 #include "flutter/impeller/geometry/geometry_asserts.h"
 #include "impeller/entity/contents/texture_contents.h"
+#include "impeller/entity/texture_fill.frag.h"
+#include "impeller/renderer/testing/mocks.h"
 #include "third_party/googletest/googletest/include/gtest/gtest.h"
 
 namespace impeller {
@@ -63,6 +65,22 @@ TEST(TextureColorTransformTest, LinearP3NativeIsOnlyEncoded) {
   EXPECT_VECTOR3_NEAR(transform.row0, kIdentityRow0);
   EXPECT_VECTOR3_NEAR(transform.row1, kIdentityRow1);
   EXPECT_VECTOR3_NEAR(transform.row2, kIdentityRow2);
+}
+
+// Every texture pipeline caller (blend filters, blur downsample, atlas) starts
+// from a value-initialized FragInfo; without the helper its gamut matrix is all
+// zero and the sampled pixels come out black.
+TEST(TextureColorTransformTest, HelperFillsAValueInitializedFragInfo) {
+  TextureDescriptor desc;
+  desc.size = {4, 4};
+  desc.color_space = ColorSpace::kSRGB;
+  MockTexture texture(desc);
+  TextureFillFragmentShader::FragInfo frag_info{};
+  SetTextureColorTransform(frag_info, texture);
+  EXPECT_VECTOR3_NEAR(frag_info.color_row0, kIdentityRow0);
+  EXPECT_VECTOR3_NEAR(frag_info.color_row1, kIdentityRow1);
+  EXPECT_VECTOR3_NEAR(frag_info.color_row2, kIdentityRow2);
+  EXPECT_EQ(frag_info.gamma_encode, 0.0f);
 }
 
 }  // namespace testing

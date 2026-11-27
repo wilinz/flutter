@@ -17,6 +17,7 @@
 #include "impeller/core/vertex_buffer.h"
 #include "impeller/entity/contents/anonymous_contents.h"
 #include "impeller/entity/contents/content_context.h"
+#include "impeller/entity/contents/texture_contents.h"
 #include "impeller/entity/contents/contents.h"
 #include "impeller/entity/contents/filters/color_filter_contents.h"
 #include "impeller/entity/contents/filters/inputs/filter_input.h"
@@ -595,6 +596,7 @@ static std::optional<Entity> PipelineBlend(
           absorb_opacity == ColorFilterContents::AbsorbOpacity::kYes
               ? input->opacity
               : 1.0;
+      SetTextureColorTransform(frag_info, *input->texture);
       FS::BindFragInfo(pass, data_host_buffer.EmplaceUniform(frag_info));
       VS::BindFrameInfo(pass, data_host_buffer.EmplaceUniform(frame_info));
 
@@ -721,6 +723,7 @@ std::optional<Entity> BlendFilterContents::CreateFramebufferAdvancedBlend(
 
       FS::FragInfo frag_info{};
       frag_info.alpha = 1.0;
+      SetTextureColorTransform(frag_info, *dst_snapshot->texture);
 
       std::array<VS::PerVertexData, 4> vertices = {
           VS::PerVertexData{{0, 0}, {0, 0}},

@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "impeller/core/sampler_descriptor.h"
+#include "impeller/core/texture.h"
 #include "impeller/core/texture_descriptor.h"
 #include "impeller/entity/contents/contents.h"
 #include "impeller/geometry/vector.h"
@@ -28,6 +29,20 @@ struct TextureColorTransform {
 /// Display P3 sources are converted to sRGB primaries; linear sources
 /// (kLinearDisplayP3, kLinearP3Native) are sRGB-encoded.
 TextureColorTransform GetTextureColorTransform(ColorSpace source);
+
+/// Fills the color transform fields of a texture_fill (or strict source)
+/// FragInfo for sampling [texture]. Every caller of the texture pipelines must
+/// use this: a value-initialized FragInfo has an all-zero gamut matrix, which
+/// renders every sampled pixel black.
+template <typename FragInfo>
+void SetTextureColorTransform(FragInfo& frag_info, const Texture& texture) {
+  const TextureColorTransform transform =
+      GetTextureColorTransform(texture.GetTextureDescriptor().color_space);
+  frag_info.gamma_encode = transform.gamma_encode ? 1.0f : 0.0f;
+  frag_info.color_row0 = transform.row0;
+  frag_info.color_row1 = transform.row1;
+  frag_info.color_row2 = transform.row2;
+}
 
 class Texture;
 

@@ -9,6 +9,7 @@
 #include "flutter/fml/make_copyable.h"
 #include "impeller/entity/contents/clip_contents.h"
 #include "impeller/entity/contents/content_context.h"
+#include "impeller/entity/contents/texture_contents.h"
 #include "impeller/entity/entity.h"
 #include "impeller/entity/texture_downsample.frag.h"
 #include "impeller/entity/texture_downsample_bounded.frag.h"
@@ -436,6 +437,7 @@ absl::StatusOr<RenderTarget> MakeDownsampleSubpass(
 
           TextureFillFragmentShader::FragInfo frag_info{};
           frag_info.alpha = 1.0;
+          SetTextureColorTransform(frag_info, *input_texture);
 
           const Quad& uvs = pass_args.uvs;
           std::array<VS::PerVertexData, 4> vertices = {
